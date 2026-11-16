@@ -82,15 +82,18 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .api-box a { color: var(--link); overflow-wrap:anywhere; }
 .api-box pre { max-height: 170px; overflow:auto; background:var(--code-bg); border:1px solid var(--line); border-radius:6px; padding:7px; white-space:pre-wrap; }
 .api-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.layout { display: grid; grid-template-columns: minmax(0,2fr) minmax(320px,1fr); gap: 12px; }
-.side { display:flex; flex-direction:column; min-height:0; }
+:root { --model-list-height: 42rem; }
+.layout { display: grid; grid-template-columns: minmax(0,2fr) minmax(320px,1fr); gap: 12px; align-items: start; }
+.side { display:flex; flex-direction:column; min-height:0; align-self:stretch; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin-bottom: 12px; min-width: 0; }
-.side .panel { flex:1; display:flex; flex-direction:column; min-height:0; margin-bottom:0; }
+.models-panel { display:flex; flex-direction:column; min-height:0; align-self:start; }
+.side .panel { display:flex; flex-direction:column; min-height:0; margin-bottom:0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: 10px; }
 .models-panel .cards {
   grid-template-columns: repeat(3,minmax(0,1fr));
-  max-height: 42rem;
+  height: var(--model-list-height);
+  min-height:0;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -115,7 +118,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .checkbox { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .checkbox input { width: auto; }
 .wide { grid-column: 1 / -1; }
-.jobs { display: grid; gap: 7px; flex:1; min-height:0; overflow-y: auto; align-content:start; }
+.jobs { display: grid; gap: 7px; height: var(--model-list-height); min-height:0; overflow-y: auto; align-content:start; }
 .job { background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 8px; }
 .job strong { font-size: 12px; }
 .job-row { display: flex; justify-content: space-between; align-items: center; gap: 7px; }
