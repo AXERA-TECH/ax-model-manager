@@ -82,6 +82,11 @@ class FakeSubprocessManager:
         except ChildProcessError:
             return False
 
+    def list_runtimes(self) -> list[dict[str, Any]]:
+        """Fake backend intentionally has no discoverable process list."""
+
+        return []
+
 
 class SystemdRunManager:
     """Production candidate backend using transient per-runtime systemd units."""
@@ -146,3 +151,45 @@ class SystemdRunManager:
     def is_alive(self, handle: RuntimeHandle) -> bool:
         completed = self._systemctl("is-active", handle.runtime_id, check=False)
         return completed.stdout.strip() in {"active", "activating", "reloading"}
+
+    def list_runtimes(self) -> list[dict[str, Any]]:
+        """List Manager-created transient runtime units and their properties."""
+
+        units = self._systemctl(
+            "list-units",
+            "ax-model-*.service",
+            "--no-legend",
+            "--plain",
+            check=False,
+        ).stdout.splitlines()
+        result: list[dict[str, Any]] = []
+        for line in units:
+            parts = line.split()
+            if not parts or not parts[0].startswith("ax-model-"):
+                continue
+            unit = parts[0]
+            runtime_id = unit.removesuffix(".service")
+            show = self._systemctl(
+                "show",
+                unit,
+                "--property=MainPID,ActiveState,SubState,ExecStart",
+                check=False,
+            ).stdout
+            properties: dict[str, Any] = {}
+            for prop in show.splitlines():
+                if "=" in prop:
+                    key, value = prop.split("=", 1)
+                    properties[key] = value
+            try:
+                pid = int(properties.get("MainPID") or 0) or None
+            except ValueError:
+                pid = None
+            result.append({
+                "runtime_id": runtime_id,
+                "unit": unit,
+                "pid": pid,
+                "active_state": properties.get("ActiveState"),
+                "sub_state": properties.get("SubState"),
+                "command": properties.get("ExecStart"),
+            })
+        return result

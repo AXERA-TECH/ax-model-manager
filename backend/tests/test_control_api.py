@@ -110,6 +110,46 @@ def test_profile_save_and_delete(model_root: Path, tmp_path: Path) -> None:
         ).status_code == 400
 
 
+def test_profile_duplicate_reset_diff_and_preview(model_root: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        duplicated = client.post(
+            "/api/v1/models/fixture-model/profiles/default/duplicate",
+            json={"target": "benchmark_greedy"},
+        )
+        assert duplicated.status_code == 200
+        assert "benchmark_greedy" in duplicated.json()["profiles"]
+
+        changed = client.put(
+            "/api/v1/models/fixture-model/profiles/benchmark_greedy",
+            json={"context": 8192, "batch": 2048},
+        )
+        assert changed.status_code == 200
+
+        diff = client.get(
+            "/api/v1/models/fixture-model/profiles/default/diff/benchmark_greedy"
+        )
+        assert diff.status_code == 200
+        changes = {item["field"]: item for item in diff.json()["changes"]}
+        assert changes["context"]["left"] == 32768
+        assert changes["context"]["right"] == 8192
+        assert changes["batch"]["right"] == 2048
+
+        preview = client.post(
+            "/api/v1/models/fixture-model/preview",
+            json={"profile": "benchmark_greedy"},
+        )
+        assert preview.status_code == 200
+        assert "--port" in preview.json()["argv"]
+        assert "18080" in preview.json()["argv"] or "18081" in preview.json()["argv"]
+
+        reset = client.post(
+            "/api/v1/models/fixture-model/profiles/benchmark_greedy/reset"
+        )
+        assert reset.status_code == 200
+        manifest = client.get("/api/v1/models/fixture-model/manifest").json()["manifest"]
+        assert manifest["profiles"]["benchmark_greedy"]["context"] == 32768
+
+
 def test_start_and_stop_fake_model(model_root: Path, tmp_path: Path) -> None:
     with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
         started = client.post(

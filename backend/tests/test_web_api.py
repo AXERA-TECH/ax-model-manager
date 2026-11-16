@@ -49,14 +49,26 @@ def test_job_log_endpoint_returns_tail(model_root: Path, tmp_path: Path) -> None
         job = app.state.jobs.create("start", "fixture-model", "stopped")
         log_path = tmp_path / "data/logs/test.log"
         log_path.parent.mkdir(parents=True)
-        log_path.write_text("one\ntwo\nthree\n", encoding="utf-8")
+        log_path.write_text("one\nwarning line\nfailed error\nthree\n", encoding="utf-8")
         app.state.jobs.update(job, log_path=str(log_path))
 
         response = client.get(f"/api/v1/jobs/{job.id}/logs?lines=2")
         assert response.status_code == 200
         payload = response.json()
-        assert payload["lines"] == ["two", "three"]
+        assert payload["lines"] == ["failed error", "three"]
         assert payload["truncated"] is False
+
+        filtered = client.get(f"/api/v1/jobs/{job.id}/logs?lines=20&search=error").json()
+        assert filtered["lines"] == ["failed error"]
+        errors_only = client.get(
+            f"/api/v1/jobs/{job.id}/logs?lines=20&errors_only=true"
+        ).json()
+        assert errors_only["lines"] == ["failed error"]
+        text = client.get(
+            f"/api/v1/jobs/{job.id}/logs?lines=20&output_format=text"
+        )
+        assert text.headers["content-type"].startswith("text/plain")
+        assert "failed error" in text.text
 
 
 def test_audit_endpoint_returns_recent_records(model_root: Path, tmp_path: Path) -> None:
@@ -91,6 +103,8 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         ).read_text(encoding="utf-8")
         assert 'id="launch-dialog"' in index.text
         assert 'id="launch-force"' in index.text
+        assert '<option value="16384">16K</option>' in index.text
+        assert '<option value="262144">256K</option>' in index.text
         assert 'class="panel audit-panel"' in index.text
         assert "max-height: 14rem" in (
             Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"

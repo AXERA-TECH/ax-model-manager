@@ -78,6 +78,7 @@
       <div id="device-identity" class="metadata device-summary"></div>
       <details id="device-details" class="device-details">
         <summary>Show advanced device metrics</summary>
+        <div id="runtime-reconciliation" class="runtime-reconciliation"></div>
         <div id="device-grid" class="device-grid">
           <p class="message">tempmon is unavailable on this board.</p>
         </div>
@@ -140,8 +141,17 @@
     <div class="launch-body">
       <div class="form-grid">
         <label>Profile<select id="profile"></select></label>
+            <label>New profile name<input id="new-profile-name" type="text" placeholder="benchmark_greedy" autocomplete="off"></label>
         <label>Port<input id="port" type="number" min="18080" max="18089" placeholder="auto"></label>
-        <label>Context<input id="context" type="number" min="1024" step="1024" value="4096"></label>
+        <label>Context
+          <select id="context" aria-label="Context length">
+            <option value="16384">16K</option>
+            <option value="32768" selected>32K</option>
+            <option value="65536">64K</option>
+            <option value="131072">128K</option>
+            <option value="262144">256K</option>
+          </select>
+        </label>
         <label>Batch<input id="batch" type="number" min="1" step="256" value="4096"></label>
         <label>UBatch<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
         <label>Cache RAM MiB<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
@@ -166,6 +176,43 @@
         Start even if the configured model-count limit is reached
       </label>
       <p class="message">Multiple runtimes use separate ports. Confirm OS/CMM memory is sufficient before forcing the limit.</p>
+      <div class="profile-tools">
+        <button id="launch-duplicate-profile" type="button">Duplicate</button>
+        <button id="launch-reset-profile" type="button">Reset</button>
+        <button id="launch-delete-profile" type="button" class="danger">Delete</button>
+        <button id="launch-diff-profile" type="button">Diff vs new</button>
+        <button id="launch-preview" type="button">Preview command</button>
+      </div>
+      <pre id="profile-diff" class="side-output hidden"></pre>
+      <pre id="launch-preview-output" class="side-output hidden"></pre>
+    </div>
+  </dialog>
+
+  <dialog id="model-dialog">
+    <div class="dialog-head">
+      <div>
+        <h3 id="model-dialog-title">Model</h3>
+        <div id="model-dialog-subtitle" class="job-detail"></div>
+      </div>
+      <button id="model-dialog-close">Close</button>
+    </div>
+    <div class="model-detail-body">
+      <section>
+        <h2>Overview</h2>
+        <div id="model-detail-summary" class="metadata"></div>
+      </section>
+      <section>
+        <h2>Artifacts</h2>
+        <div id="model-detail-artifacts" class="detail-list"></div>
+      </section>
+      <section>
+        <h2>Recent jobs</h2>
+        <div id="model-detail-jobs" class="detail-list"></div>
+      </section>
+      <section>
+        <h2>Manifest</h2>
+        <pre id="model-detail-manifest"></pre>
+      </section>
     </div>
   </dialog>
 
@@ -173,6 +220,11 @@
     <div class="dialog-head">
       <h3 id="log-title">Job log</h3>
       <div class="dialog-controls">
+        <input id="log-filter" type="search" placeholder="Filter logs">
+        <label class="checkbox">
+          <input id="log-errors-only" type="checkbox">
+          Errors
+        </label>
         <label class="checkbox">
           <input id="auto-log" type="checkbox" checked>
           Auto refresh
@@ -182,10 +234,11 @@
           Follow tail
         </label>
         <button id="reload-log">Reload</button>
+        <a id="log-download" class="button-link" href="#">Download</a>
         <button id="close-log">Close</button>
       </div>
     </div>
-    <pre id="log-content"></pre>
+    <div id="log-content" role="log"></div>
   </dialog>
 
   <script src="/ui/app.js"></script>

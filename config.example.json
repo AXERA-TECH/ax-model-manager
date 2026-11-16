@@ -8,6 +8,9 @@
   "enable_control": false,
   "process_backend": "none",
   "max_running_models": 1,
+  "min_free_cmm_mb": 1024,
+  "min_os_available_mb": 1024,
+  "max_npu_temp_c": 85.0,
   "auth_token": "",
   "allowed_origins": []
 }

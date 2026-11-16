@@ -11,6 +11,7 @@ let modelRows = [];
 let launchModel = null;
 let launchMode = 'start';
 let launchManifest = null;
+const CONTEXT_OPTIONS = [16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
 
@@ -390,6 +391,40 @@ function renderDeviceResources(resources = {}) {
   grid.append(diskCard);
 }
 
+function renderRuntimeReconciliation(reconciliation = {}) {
+  const container = $('runtime-reconciliation');
+  if (!container) return;
+  container.replaceChildren();
+  const orphans = reconciliation.orphans || [];
+  if (!orphans.length) {
+    const message = document.createElement('p');
+    message.className = 'message';
+    message.style.margin = '0';
+    message.textContent = `Runtime state consistent · ${reconciliation.active_runtime_count ?? 0} active runtime(s) · no orphan units`;
+    container.append(message);
+    return;
+  }
+  for (const orphan of orphans) {
+    const row = document.createElement('div');
+    row.className = 'runtime-orphan';
+    const info = document.createElement('code');
+    info.textContent = `${orphan.runtime_id}:${orphan.port || '?'} · PID ${orphan.pid || '?'}`;
+    const actions = document.createElement('div');
+    actions.className = 'runtime-orphan-actions';
+    const adopt = document.createElement('button');
+    adopt.className = 'small';
+    adopt.textContent = 'Adopt';
+    adopt.onclick = () => control(`/api/v1/runtimes/${orphan.runtime_id}/adopt`, {});
+    const stop = document.createElement('button');
+    stop.className = 'small danger';
+    stop.textContent = 'Stop';
+    stop.onclick = () => control(`/api/v1/runtimes/${orphan.runtime_id}/stop`, {});
+    actions.append(adopt, stop);
+    row.append(info, actions);
+    container.append(row);
+  }
+}
+
 function renderModels(models, config = {}) {
   modelRows = models;
   const showInvalid = $('show-invalid').checked;
@@ -445,6 +480,11 @@ function renderModels(models, config = {}) {
 
     const actions = document.createElement('div');
     actions.className = 'model-actions';
+    const details = document.createElement('button');
+    details.className = 'small';
+    details.textContent = 'Details';
+    details.onclick = () => openModelDialog(model);
+    actions.append(details);
     if (controlEnabled) {
       if (model.manifest_source === 'draft' && model.valid) {
         const confirm = document.createElement('button');
@@ -577,10 +617,68 @@ async function refresh() {
     }
     $('save-model-limit').disabled = !controlEnabled;
     renderDeviceResources(dashboard.resources || {});
+    renderRuntimeReconciliation(dashboard.runtime_reconciliation || {});
     renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
+function detailRow(label, value, title = '') {
+  const row = document.createElement('div');
+  row.className = 'detail-row';
+  const key = document.createElement('span');
+  key.textContent = label;
+  const output = document.createElement('b');
+  output.textContent = value;
+  if (title) output.title = title;
+  row.append(key, output);
+  return row;
+}
+
+async function openModelDialog(model) {
+  try {
+    const detail = await api(`/api/v1/models/${model.id}`);
+    $('model-dialog-title').textContent = detail.name || detail.id;
+    $('model-dialog-subtitle').textContent = `${detail.id} · ${detail.directory}`;
+    const summary = $('model-detail-summary');
+    summary.replaceChildren();
+    for (const [label, value] of [
+      ['State', detail.active_job?.state || (detail.ready_to_start ? 'ready' : detail.valid ? 'stopped' : 'invalid')],
+      ['Manifest', detail.manifest_source],
+      ['Valid', detail.valid ? 'yes' : 'no'],
+      ['Size', formatSize(detail.size_bytes)],
+      ['Files', detail.file_count ?? '—'],
+      ['Context', detail.max_context?.toLocaleString() || '—'],
+      ['Capabilities', (detail.capabilities || []).join(', ') || '—'],
+      ['Profiles', (detail.profiles || []).join(', ') || '—'],
+    ]) {
+      summary.append(detailRow(label, String(value)));
+    }
+
+    const artifacts = $('model-detail-artifacts');
+    artifacts.replaceChildren();
+    for (const artifact of detail.artifacts || []) {
+      const state = artifact.exists
+        ? `${artifact.path}${artifact.executable ? ' · executable' : ''}`
+        : (artifact.errors?.join('; ') || 'missing');
+      artifacts.append(detailRow(artifact.key, state));
+    }
+
+    const jobs = $('model-detail-jobs');
+    jobs.replaceChildren();
+    for (const job of detail.recent_jobs || []) {
+      jobs.append(detailRow(
+        `${job.action} · ${job.state}`,
+        `${job.job_id} · ${formatTime(job.created_at)}${job.failure_code ? ` · ${job.failure_code}` : job.error ? ` · ${job.error}` : ''}`,
+      ));
+    }
+    if (!(detail.recent_jobs || []).length) jobs.append(detailRow('Recent jobs', 'none'));
+    $('model-detail-manifest').textContent = JSON.stringify(detail.manifest, null, 2);
+    $('model-dialog').showModal();
   } catch (error) {
     showAlert(error.message);
   }
@@ -635,7 +733,9 @@ function currentSamplingPayload() {
 function currentLaunchPayload() {
   return {
     profile: $('profile').value || 'default',
-    context: Number($('context').value) || 4096,
+    context: CONTEXT_OPTIONS.includes(Number($('context').value))
+      ? Number($('context').value)
+      : 32768,
     batch: Number($('batch').value) || 4096,
     ubatch: Number($('ubatch').value) || 4096,
     cache_ram: Number($('cache-ram').value) || 0,
@@ -651,7 +751,14 @@ function stopModel(id) {
 
 function applyLaunchProfile(name) {
   const profile = launchManifest?.profiles?.[name] || {};
-  $('context').value = profile.context ?? 4096;
+  const configuredContext = Number(profile.context);
+  const context = Number.isFinite(configuredContext)
+    ? CONTEXT_OPTIONS.reduce(
+      (left, right) => Math.abs(right - configuredContext) < Math.abs(left - configuredContext) ? right : left,
+      CONTEXT_OPTIONS[0],
+    )
+    : 32768;
+  $('context').value = String(context);
   $('batch').value = profile.batch ?? 4096;
   $('ubatch').value = profile.ubatch ?? 4096;
   $('cache-ram').value = profile.cache_ram ?? 0;
@@ -739,6 +846,85 @@ async function saveLaunchProfile() {
   }
 }
 
+async function duplicateLaunchProfile() {
+  if (!launchModel) return;
+  const target = $('new-profile-name').value.trim();
+  if (!target) return showAlert('Enter a new profile name first.');
+  await control(
+    `/api/v1/models/${launchModel.id}/profiles/${$('profile').value}/duplicate`,
+    { target },
+  );
+  launchModel = { ...launchModel, profiles: [...new Set([...(launchModel.profiles || []), target])] };
+  $('new-profile-name').value = '';
+  await openLaunchDialog(launchModel, launchMode);
+  $('profile').value = target;
+  applyLaunchProfile(target);
+}
+
+async function resetLaunchProfile() {
+  if (!launchModel) return;
+  const profile = $('profile').value;
+  if (!confirm(`Reset profile ${profile} to its original manifest values?`)) return;
+  await control(`/api/v1/models/${launchModel.id}/profiles/${profile}/reset`, {});
+  await openLaunchDialog({ ...launchModel }, launchMode);
+}
+
+async function deleteLaunchProfile() {
+  if (!launchModel) return;
+  const profile = $('profile').value;
+  if (profile === 'default') return showAlert('The default profile cannot be deleted.');
+  if (!confirm(`Delete profile ${profile}?`)) return;
+  await api(`/api/v1/models/${launchModel.id}/profiles/${profile}`, { method: 'DELETE' });
+  launchModel = {
+    ...launchModel,
+    profiles: (launchModel.profiles || []).filter(item => item !== profile),
+  };
+  await openLaunchDialog(launchModel, launchMode);
+}
+
+async function diffLaunchProfile() {
+  if (!launchModel) return;
+  const target = $('new-profile-name').value.trim();
+  if (!target) return showAlert('Enter the new profile name to compare.');
+  const left = $('profile').value;
+  try {
+    const result = await api(
+      `/api/v1/models/${launchModel.id}/profiles/${left}/diff/${target}`
+    );
+    const output = $('profile-diff');
+    output.classList.remove('hidden');
+    output.textContent = result.changes?.length
+      ? result.changes.map(change => `${change.change.padEnd(7)} ${change.field}: ${JSON.stringify(change.left)} → ${JSON.stringify(change.right)}`).join('\n')
+      : 'No differences.';
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
+async function previewLaunchCommand() {
+  if (!launchModel) return;
+  const payload = { ...currentLaunchPayload() };
+  const port = Number($('port').value);
+  if (port) payload.port = port;
+  try {
+    const result = await api(`/api/v1/models/${launchModel.id}/preview`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const output = $('launch-preview-output');
+    output.classList.remove('hidden');
+    output.textContent = [
+      `cwd: ${result.cwd}`,
+      `env: ${Object.entries(result.env || {}).map(([key, value]) => `${key}=${value}`).join(' ')}`,
+      `port: ${result.port}`,
+      'argv:',
+      result.argv.map((argument, index) => `${String(index).padStart(2)} ${argument}`).join('\n'),
+    ].join('\n');
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
 async function openLog(jobId) {
   currentLogJob = jobId;
   $('log-title').textContent = `Job ${jobId}`;
@@ -754,10 +940,32 @@ async function loadLog({ force = false, follow = null } = {}) {
   const shouldFollow = follow ?? ($('follow-log')?.checked && nearBottom);
   logLoading = true;
   try {
-    const result = await api(`/api/v1/jobs/${currentLogJob}/logs?lines=400`);
-    content.textContent = result.path
-      ? result.lines.join('\n') || '(empty log)'
-      : 'This job has no runtime log. Open the associated start job to inspect llama-server output.';
+    const parameters = new URLSearchParams({
+      lines: '400',
+      search: $('log-filter').value.trim(),
+      errors_only: $('log-errors-only').checked ? 'true' : 'false',
+    });
+    $('log-download').href = `/api/v1/jobs/${currentLogJob}/logs?${parameters.toString()}&output_format=text`;
+    const result = await api(`/api/v1/jobs/${currentLogJob}/logs?${parameters.toString()}`);
+    content.replaceChildren();
+    if (!result.path) {
+      const line = document.createElement('span');
+      line.className = 'log-line warning';
+      line.textContent = 'This job has no runtime log. Open the associated start job to inspect llama-server output.';
+      content.append(line);
+    } else if (!result.lines.length) {
+      const line = document.createElement('span');
+      line.className = 'log-line';
+      line.textContent = '(empty log)';
+      content.append(line);
+    } else {
+      for (const text of result.lines) {
+        const line = document.createElement('span');
+        line.className = `log-line${/error|failed|failure|exception|traceback|oom|out of memory/i.test(text) ? ' error' : /warn/i.test(text) ? ' warning' : ''}`;
+        line.textContent = text;
+        content.append(line);
+      }
+    }
     if (shouldFollow) content.scrollTop = content.scrollHeight;
   } catch (error) {
     content.textContent = error.message;
@@ -795,7 +1003,13 @@ $('save-model-limit').onclick = saveModelLimit;
 $('profile').onchange = event => applyLaunchProfile(event.target.value);
 $('launch-submit').onclick = submitLaunchDialog;
 $('launch-save-profile').onclick = saveLaunchProfile;
+$('launch-duplicate-profile').onclick = duplicateLaunchProfile;
+$('launch-reset-profile').onclick = resetLaunchProfile;
+$('launch-delete-profile').onclick = deleteLaunchProfile;
+$('launch-diff-profile').onclick = diffLaunchProfile;
+$('launch-preview').onclick = previewLaunchCommand;
 $('launch-cancel').onclick = () => $('launch-dialog').close();
+$('model-dialog-close').onclick = () => $('model-dialog').close();
 $('launch-force').onchange = event => {
   if (event.target.checked) {
     event.target.checked = confirm(
@@ -804,6 +1018,8 @@ $('launch-force').onchange = event => {
   }
 };
 $('reload-log').onclick = () => loadLog({ force: true, follow: Boolean($('follow-log')?.checked) });
+$('log-filter').oninput = () => loadLog({ force: true });
+$('log-errors-only').onchange = () => loadLog({ force: true });
 $('close-log').onclick = () => $('log-dialog').close();
 $('auto-log').onchange = startLogPolling;
 $('log-dialog').addEventListener('close', stopLogPolling);

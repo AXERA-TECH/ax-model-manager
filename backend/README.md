@@ -98,11 +98,21 @@ Additional endpoints when `enable_control=true`:
 | GET | `/api/v1/jobs/{job_id}/logs` | Read a job log tail |
 | GET | `/api/v1/audit` | Read audit records |
 | GET | `/api/v1/dashboard` | Aggregated dashboard state |
+| GET | `/api/v1/runtimes` | Reconcile jobs/systemd units and list orphans |
+| POST | `/api/v1/runtimes/{runtime_id}/adopt` | Adopt an orphan runtime |
+| POST | `/api/v1/runtimes/{runtime_id}/stop` | Stop an orphan runtime |
+| POST | `/api/v1/models/{id}/preview` | Preview the generated launch command |
+| POST | `/api/v1/models/{id}/profiles/{profile}/duplicate` | Duplicate a profile |
+| POST | `/api/v1/models/{id}/profiles/{profile}/reset` | Reset a profile to its base manifest |
+| GET | `/api/v1/models/{id}/profiles/{left}/diff/{right}` | Compare two profiles |
 
 Production systemd start/stop/switch/restart is implemented.
 `max_running_models` is a conservative configured limit. A start request with
 `force: true` may exceed it after the user confirms OS/CMM memory risk. Each
 runtime receives a distinct port from `18080-18089`.
+`min_free_cmm_mb`, `min_os_available_mb`, and `max_npu_temp_c` are startup
+preflight thresholds. On the systemd backend, an unavailable tempmon endpoint is
+treated as a failed resource check rather than silently allowing a start.
 Running jobs also retain the model IDs advertised by the runtime's
 `GET /v1/models` endpoint. The admin UI uses this to show the correct
 OpenAI-compatible base URL and request example.

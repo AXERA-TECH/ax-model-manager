@@ -22,6 +22,9 @@ class Settings:
     enable_control: bool = False
     process_backend: str = "none"
     max_running_models: int = 1
+    min_free_cmm_mb: int = 1024
+    min_os_available_mb: int = 1024
+    max_npu_temp_c: float = 85.0
     auth_token: str = ""
     allowed_origins: tuple[str, ...] = ()
 
@@ -41,6 +44,10 @@ class Settings:
             )
         if self.max_running_models < 1:
             raise ValueError("max_running_models must be at least 1")
+        if self.min_free_cmm_mb < 0 or self.min_os_available_mb < 0:
+            raise ValueError("memory thresholds cannot be negative")
+        if not 40.0 <= self.max_npu_temp_c <= 120.0:
+            raise ValueError("max_npu_temp_c must be between 40 and 120")
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +60,9 @@ class Settings:
             "enable_control": self.enable_control,
             "process_backend": self.process_backend,
             "max_running_models": self.max_running_models,
+            "min_free_cmm_mb": self.min_free_cmm_mb,
+            "min_os_available_mb": self.min_os_available_mb,
+            "max_npu_temp_c": self.max_npu_temp_c,
             "authentication": bool(self.auth_token),
             "allowed_origins": list(self.allowed_origins),
         }
@@ -93,6 +103,9 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         enable_control=bool(values.get("enable_control", False)),
         process_backend=str(values.get("process_backend", "none")),
         max_running_models=int(values.get("max_running_models", 1)),
+        min_free_cmm_mb=int(values.get("min_free_cmm_mb", 1024)),
+        min_os_available_mb=int(values.get("min_os_available_mb", 1024)),
+        max_npu_temp_c=float(values.get("max_npu_temp_c", 85.0)),
         auth_token=str(values.get("auth_token", "")),
         allowed_origins=tuple(str(item) for item in values.get("allowed_origins", [])),
     )

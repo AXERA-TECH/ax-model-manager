@@ -152,6 +152,12 @@ Qwen3.5-0.8B + Qwen3-ASR-1.7B 双模型并行
 benchmark_greedy profile 保存与启动
 Manager 重启不影响运行中的 llama-server
 Manager 重启后 job 状态可恢复
+孤儿 llama-server runtime 检测 / 接管 / 停止
+启动前 CMM、OS memory、NPU 温度阈值检查
+启动命令预览
+Profile 复制 / 重置 / Diff
+模型详情与最近任务诊断
+日志过滤、错误行高亮和下载
 ```
 
 访问 API 需要部署时生成的 Bearer token。本机不把 token 写入 Git 仓库，密钥文件位于：
@@ -188,7 +194,8 @@ active job 状态
 切换模型
 重启模型
 在模型卡片内打开启动参数配置
-启动参数：context / batch / ubatch / cache_ram / ctxcp / MTP / port
+Context 固定提供 16K / 32K / 64K / 128K / 256K 档位
+启动参数：context 档位 / batch / ubatch / cache_ram / ctxcp / MTP / port
 采样参数：temperature / top-k / top-p / min-p / repeat / presence / frequency
 白天 / 黑夜主题切换
 job 列表

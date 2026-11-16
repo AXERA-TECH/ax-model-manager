@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -9,11 +10,12 @@ import urllib.request
 from hmac import compare_digest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -87,6 +89,10 @@ class ProfileInput(BaseModel):
     sampling: SamplingInput | None = None
 
 
+class ProfileDuplicateRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=128)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     selected = settings or load_settings()
     app = FastAPI(
@@ -101,6 +107,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "systemd": SystemdRunManager(),
     }
     app.state.process_manager = managers.get(selected.process_backend)
+
+    def failure_code(message: str | None) -> str:
+        text = str(message or "").lower()
+        if "did not become ready" in text or "timeout" in text:
+            return "startup_timeout"
+        if "out of memory" in text or "oom" in text or "cannot allocate" in text:
+            return "out_of_memory"
+        if "no free llama-server port" in text or "address already in use" in text:
+            return "port_conflict"
+        if "binary or model artifact is missing" in text:
+            return "artifact_missing"
+        if "not executable" in text:
+            return "binary_not_executable"
+        if "exited before becoming ready" in text:
+            return "runtime_exited"
+        if "unauthorized" in text:
+            return "unauthorized"
+        return "runtime_error"
 
     if selected.allowed_origins:
         app.add_middleware(
@@ -179,6 +203,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             record["active_job"] = active.public()
         else:
             record["active_job"] = None
+        record["recent_jobs"] = [
+            job.public()
+            for job in app.state.jobs.list()
+            if job.model_id == model_id
+        ][:10]
         return record
 
     @app.get("/api/v1/models/{model_id}/manifest", dependencies=[Depends(require_auth)])
@@ -311,6 +340,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "path": str(override_path),
         }
 
+    def find_base_model(model_id: str) -> dict[str, Any]:
+        try:
+            records = scan_models(Path(app.state.settings.model_root), None)
+        except ModelRootError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        for record in records:
+            if record["id"] == model_id:
+                return record
+        raise HTTPException(status_code=404, detail=f"model not found: {model_id}")
+
     @app.put(
         "/api/v1/models/{model_id}/profiles/{profile_id}",
         dependencies=[Depends(require_auth), Depends(require_control)],
@@ -328,11 +367,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profiles = manifest.setdefault("profiles", {})
         clean = body.model_dump(exclude_none=True)
         if "sampling" in clean and clean["sampling"] is not None:
-            clean["sampling"] = {
+            incoming_sampling = {
                 key: value for key, value in clean["sampling"].items()
                 if value is not None
             }
-        profiles[profile_id] = clean
+            clean["sampling"] = {
+                **profiles.get(profile_id, {}).get("sampling", {}),
+                **incoming_sampling,
+            }
+        profiles[profile_id] = {**profiles.get(profile_id, {}), **clean}
         return write_user_manifest(record, manifest, request, "profile_saved")
 
     @app.delete(
@@ -353,6 +396,84 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
         del profiles[profile_id]
         return write_user_manifest(record, manifest, request, "profile_deleted")
+
+    @app.post(
+        "/api/v1/models/{model_id}/profiles/{profile_id}/duplicate",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def duplicate_profile(
+        model_id: str,
+        profile_id: str,
+        body: ProfileDuplicateRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        if not is_safe_id(body.target):
+            raise HTTPException(status_code=400, detail="invalid target profile name")
+        record = find_model(model_id)
+        profiles = record["manifest"].get("profiles", {})
+        if profile_id not in profiles:
+            raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
+        if body.target in profiles:
+            raise HTTPException(status_code=409, detail=f"profile already exists: {body.target}")
+        manifest = json.loads(json.dumps(record["manifest"], ensure_ascii=False))
+        manifest.setdefault("profiles", {})[body.target] = json.loads(json.dumps(
+            profiles[profile_id],
+            ensure_ascii=False,
+        ))
+        return write_user_manifest(record, manifest, request, "profile_duplicated")
+
+    @app.post(
+        "/api/v1/models/{model_id}/profiles/{profile_id}/reset",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def reset_profile(model_id: str, profile_id: str, request: Request) -> dict[str, Any]:
+        record = find_model(model_id)
+        base = find_base_model(model_id)
+        base_profiles = base.get("manifest", {}).get("profiles", {})
+        source_profile = profile_id if profile_id in base_profiles else "default"
+        if source_profile not in base_profiles:
+            raise HTTPException(
+                status_code=404,
+                detail="base default profile not found",
+            )
+        manifest = json.loads(json.dumps(record["manifest"], ensure_ascii=False))
+        manifest.setdefault("profiles", {})[profile_id] = json.loads(json.dumps(
+            base_profiles[source_profile],
+            ensure_ascii=False,
+        ))
+        return write_user_manifest(record, manifest, request, "profile_reset")
+
+    @app.get(
+        "/api/v1/models/{model_id}/profiles/{left}/diff/{right}",
+        dependencies=[Depends(require_auth)],
+    )
+    async def profile_diff(model_id: str, left: str, right: str) -> dict[str, Any]:
+        profiles = find_model(model_id)["manifest"].get("profiles", {})
+        if left not in profiles or right not in profiles:
+            missing = [name for name in (left, right) if name not in profiles]
+            raise HTTPException(status_code=404, detail=f"profiles not found: {', '.join(missing)}")
+
+        def flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+            rows: dict[str, Any] = {}
+            for key, item in value.items():
+                name = f"{prefix}.{key}" if prefix else key
+                if isinstance(item, dict):
+                    rows.update(flatten(item, name))
+                else:
+                    rows[name] = item
+            return rows
+
+        left_rows = flatten(profiles[left])
+        right_rows = flatten(profiles[right])
+        changes: list[dict[str, Any]] = []
+        for key in sorted(set(left_rows) | set(right_rows)):
+            if key not in left_rows:
+                changes.append({"field": key, "left": None, "right": right_rows[key], "change": "added"})
+            elif key not in right_rows:
+                changes.append({"field": key, "left": left_rows[key], "right": None, "change": "removed"})
+            elif left_rows[key] != right_rows[key]:
+                changes.append({"field": key, "left": left_rows[key], "right": right_rows[key], "change": "changed"})
+        return {"model": model_id, "left": left, "right": right, "changes": changes}
 
     def audit(request: Request, action: str, **values: Any) -> None:
         path = request.app.state.settings.data_dir / "audit.jsonl"
@@ -442,6 +563,169 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "net": None,
                 "llama": None,
             }
+
+    def resource_preflight(request: Request, force: bool = False) -> dict[str, Any]:
+        resources = board_resources()
+        if not resources.get("available"):
+            if request.app.state.settings.process_backend == "systemd":
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "resource_monitor_unavailable",
+                        "message": "tempmon is unavailable; cannot verify board memory",
+                    },
+                )
+            return {"resources": resources, "ok": True, "findings": []}
+        findings: list[dict[str, Any]] = []
+        cmm = resources.get("cmm") or {}
+        memory = resources.get("os_memory") or {}
+        try:
+            free_cmm_mb = (int(cmm.get("total_kb", 0)) - int(cmm.get("used_kb", 0))) / 1024
+        except (TypeError, ValueError):
+            free_cmm_mb = None
+        try:
+            os_available_mb = int(memory.get("avail_kb", 0)) / 1024
+        except (TypeError, ValueError):
+            os_available_mb = None
+        temperature = resources.get("npu_max_temp_c")
+
+        if free_cmm_mb is not None and free_cmm_mb < request.app.state.settings.min_free_cmm_mb:
+            findings.append({
+                "code": "cmm_low",
+                "message": f"CMM free {free_cmm_mb:.0f}MB is below {request.app.state.settings.min_free_cmm_mb}MB",
+                "value": round(free_cmm_mb, 1),
+                "threshold": request.app.state.settings.min_free_cmm_mb,
+            })
+        if os_available_mb is not None and os_available_mb < request.app.state.settings.min_os_available_mb:
+            findings.append({
+                "code": "os_memory_low",
+                "message": f"OS available {os_available_mb:.0f}MB is below {request.app.state.settings.min_os_available_mb}MB",
+                "value": round(os_available_mb, 1),
+                "threshold": request.app.state.settings.min_os_available_mb,
+            })
+        if isinstance(temperature, (int, float)) and temperature > request.app.state.settings.max_npu_temp_c:
+            findings.append({
+                "code": "npu_temperature_high",
+                "message": f"NPU temperature {temperature:.1f}C is above {request.app.state.settings.max_npu_temp_c:.1f}C",
+                "value": temperature,
+                "threshold": request.app.state.settings.max_npu_temp_c,
+            })
+
+        result = {
+            "resources": resources,
+            "ok": not findings,
+            "findings": findings,
+        }
+        if findings and not force:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "resource_check_failed",
+                    "message": "; ".join(item["message"] for item in findings),
+                    "findings": findings,
+                },
+            )
+        return result
+
+    def refresh_runtime_job(job: Job) -> None:
+        if not job.runtime_id:
+            app.state.jobs.update(
+                job,
+                state="failed",
+                error="runtime_id is missing",
+                failure_code="runtime_metadata_missing",
+            )
+            return
+        handle = RuntimeHandle(runtime_id=job.runtime_id, pid=job.pid)
+        if not app.state.process_manager.is_alive(handle):
+            previous_state = job.state
+            app.state.jobs.update(
+                job,
+                state="failed" if previous_state in {"starting", "loading", "running"} else "stopped",
+                error=f"runtime disappeared while {previous_state}",
+                failure_code="runtime_disappeared",
+            )
+            return
+        if job.state == "stopping":
+            return
+        try:
+            health = get_runtime_json(job.port, "/health", timeout=0.3) if job.port else None
+        except Exception:
+            health = None
+        if health and health.get("status") == "ok":
+            advertised_models: list[str] = []
+            try:
+                model_list = get_runtime_json(job.port, "/v1/models", timeout=0.3)
+                advertised_models = [
+                    str(item.get("id"))
+                    for item in model_list.get("data", [])
+                    if isinstance(item, dict) and item.get("id")
+                ]
+            except Exception:
+                pass
+            app.state.jobs.update(
+                job,
+                state="running",
+                runtime_endpoint=f"http://127.0.0.1:{job.port}",
+                runtime_models=advertised_models,
+            )
+        elif job.state not in {"starting", "loading"}:
+            app.state.jobs.update(job, state="loading")
+
+    def runtime_orphans() -> list[dict[str, Any]]:
+        if not hasattr(app.state.process_manager, "list_runtimes"):
+            return []
+        active_runtime_ids = {
+            job.runtime_id
+            for job in app.state.jobs.active()
+            if job.runtime_id
+        }
+        orphans: list[dict[str, Any]] = []
+        for runtime in app.state.process_manager.list_runtimes():
+            if runtime["runtime_id"] in active_runtime_ids:
+                continue
+            command = runtime.get("command") or ""
+            port_match = re.search(r"--port[= ]([0-9]+)", command)
+            original_job_match = re.search(r"job_[0-9]+_[0-9a-f]+", runtime["runtime_id"])
+            original_log_path = None
+            if original_job_match:
+                candidate = (
+                    request.app.state.settings.data_dir
+                    / "logs"
+                    / f"{original_job_match.group(0)}.log"
+                )
+                original_log_path = str(candidate) if candidate.is_file() else None
+            runtime = {
+                **runtime,
+                "port": int(port_match.group(1)) if port_match else None,
+                "health": None,
+                "log_path": original_log_path,
+            }
+            if runtime["port"]:
+                try:
+                    runtime["health"] = get_runtime_json(runtime["port"], "/health", timeout=0.3)
+                except Exception:
+                    pass
+            orphans.append(runtime)
+        return orphans
+
+    def reconcile_runtime_state() -> dict[str, Any]:
+        for job in app.state.jobs.active():
+            if job.action == "start":
+                refresh_runtime_job(job)
+        app.state.jobs.reconcile_composite_jobs()
+        orphans = runtime_orphans()
+        return {
+            "reconciled_at": time.time(),
+            "active_runtime_count": len([
+                job for job in app.state.jobs.active()
+                if job.action == "start" and job.state != "stopping"
+            ]),
+            "orphan_count": len(orphans),
+            "orphans": orphans,
+        }
+
+    app.state.runtime_reconciliation = reconcile_runtime_state()
 
     def artifact_path(record: dict[str, Any], key: str) -> Path | None:
         report = next((item for item in record["artifacts"] if item["key"] == key), None)
@@ -552,6 +836,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runtime_id=runtime_id,
         )
 
+    @app.post("/api/v1/models/{model_id}/preview", dependencies=[Depends(require_auth)])
+    async def preview_launch(model_id: str, body: StartRequest, request: Request) -> dict[str, Any]:
+        record = find_model(model_id)
+        profiles = record["manifest"].get("profiles", {})
+        if body.profile not in profiles:
+            raise HTTPException(status_code=400, detail=f"profile not found: {body.profile}")
+        port = allocate_port(request, body.port)
+        preview_job = SimpleNamespace(id="preview", port=port)
+        spec = build_process_spec(
+            request,
+            preview_job,
+            record,
+            body.profile,
+            body.model_dump(exclude={"profile", "port", "force", "debug_busy"}),
+            body.debug_busy,
+        )
+        return {
+            "model": model_id,
+            "profile": body.profile,
+            "port": port,
+            "argv": list(spec.argv),
+            "cwd": str(spec.cwd),
+            "env": spec.env,
+            "log_path": str(spec.log_path),
+        }
+
     def monitor_start(
         request: Request,
         job: Job,
@@ -561,6 +871,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         overrides: dict[str, Any] | None = None,
     ) -> None:
         jobs = request.app.state.jobs
+        handle: RuntimeHandle | None = None
         try:
             spec = build_process_spec(
                 request,
@@ -606,11 +917,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         return
                 except Exception:
                     time.sleep(0.05)
-            raise TimeoutError("runtime did not become ready within 5 seconds")
+            raise TimeoutError(f"runtime did not become ready within {timeout:g} seconds")
         except Exception as exc:
-            jobs.update(job, state="failed", error=str(exc))
-            jobs.event(job, "start_failed", error=str(exc))
-            audit(request, "start_failed", model=record["id"], job=job.id, error=str(exc))
+            code = failure_code(str(exc))
+            if handle is not None:
+                try:
+                    request.app.state.process_manager.stop(handle, timeout=5.0)
+                except Exception as cleanup_error:
+                    jobs.event(job, "cleanup_failed", error=str(cleanup_error))
+            jobs.update(job, state="failed", error=str(exc), failure_code=code)
+            jobs.event(job, "start_failed", error=str(exc), failure_code=code)
+            audit(request, "start_failed", model=record["id"], job=job.id, error=str(exc), failure_code=code)
 
     def begin_start(
         request: Request,
@@ -634,6 +951,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         existing = request.app.state.jobs.active_for_model(model_id)
         if existing:
             return existing
+        resource_preflight(request, force=body.force)
         ignore = ignore_job_ids or set()
         active = [
             job for job in request.app.state.jobs.active()
@@ -686,6 +1004,80 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = begin_start(request, record, body)
         return {"job": job.public(), "existing": False}
 
+    @app.get("/api/v1/runtimes", dependencies=[Depends(require_auth)])
+    async def runtimes(request: Request) -> dict[str, Any]:
+        reconciliation = reconcile_runtime_state()
+        request.app.state.runtime_reconciliation = reconciliation
+        return reconciliation
+
+    @app.post(
+        "/api/v1/runtimes/{runtime_id}/adopt",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def adopt_runtime(runtime_id: str, request: Request) -> dict[str, Any]:
+        orphan = next(
+            (item for item in runtime_orphans() if item["runtime_id"] == runtime_id),
+            None,
+        )
+        if not orphan:
+            raise HTTPException(status_code=404, detail=f"orphan runtime not found: {runtime_id}")
+        command = orphan.get("command") or ""
+        records = scan_models(
+            Path(request.app.state.settings.model_root),
+            Path(request.app.state.settings.data_dir) / "models",
+        )
+        record = next((item for item in records if str(item["directory"]) in command), None)
+        if not record:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "cannot map orphan runtime to a model", "command": command},
+            )
+        port = orphan.get("port")
+        if not port:
+            raise HTTPException(status_code=409, detail="orphan runtime has no parseable --port")
+
+        advertised_models: list[str] = []
+        try:
+            model_list = get_runtime_json(port, "/v1/models", timeout=0.3)
+            advertised_models = [
+                str(item.get("id"))
+                for item in model_list.get("data", [])
+                if isinstance(item, dict) and item.get("id")
+            ]
+        except Exception:
+            pass
+        job = request.app.state.jobs.create("start", str(record["id"]), "running")
+        request.app.state.jobs.update(
+            job,
+            port=port,
+            pid=orphan.get("pid"),
+            runtime_id=runtime_id,
+            runtime_endpoint=f"http://127.0.0.1:{port}",
+            runtime_models=advertised_models,
+            log_path=orphan.get("log_path"),
+        )
+        request.app.state.jobs.event(job, "orphan_runtime_adopted", runtime_id=runtime_id)
+        audit(request, "runtime_adopted", model=record["id"], job=job.id, runtime_id=runtime_id, port=port)
+        return {"job": job.public(), "runtime": orphan}
+
+    @app.post(
+        "/api/v1/runtimes/{runtime_id}/stop",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def stop_runtime(runtime_id: str, request: Request) -> dict[str, Any]:
+        orphan = next(
+            (item for item in runtime_orphans() if item["runtime_id"] == runtime_id),
+            None,
+        )
+        if not orphan:
+            raise HTTPException(status_code=404, detail=f"orphan runtime not found: {runtime_id}")
+        exit_code = request.app.state.process_manager.stop(
+            RuntimeHandle(runtime_id=runtime_id, pid=orphan.get("pid")),
+            timeout=20.0,
+        )
+        audit(request, "orphan_runtime_stopped", runtime_id=runtime_id, exit_code=exit_code)
+        return {"runtime_id": runtime_id, "stopped": True, "exit_code": exit_code}
+
     @app.get("/api/v1/jobs", dependencies=[Depends(require_auth)])
     async def list_jobs(request: Request) -> dict[str, Any]:
         return {"jobs": [job.public() for job in request.app.state.jobs.list()]}
@@ -697,12 +1089,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"job not found: {job_id}")
         return job.public()
 
-    @app.get("/api/v1/jobs/{job_id}/logs", dependencies=[Depends(require_auth)])
+    @app.get(
+        "/api/v1/jobs/{job_id}/logs",
+        dependencies=[Depends(require_auth)],
+        response_model=None,
+    )
     async def job_logs(
         job_id: str,
         request: Request,
         lines: int = Query(default=200, ge=1, le=5000),
-    ) -> dict[str, Any]:
+        search: str = Query(default="", max_length=200),
+        errors_only: bool = Query(default=False),
+        output_format: str = Query(default="json", pattern="^(json|text)$"),
+    ) -> dict[str, Any] | PlainTextResponse:
         job = request.app.state.jobs.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"job not found: {job_id}")
@@ -717,6 +1116,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     truncated = True
                 data = handle.read().decode("utf-8", errors="replace")
             output = data.splitlines()[-lines:]
+        if search:
+            needle = search.lower()
+            output = [line for line in output if needle in line.lower()]
+        if errors_only:
+            output = [
+                line for line in output
+                if re.search(r"error|failed|failure|exception|traceback|oom|out of memory", line, re.I)
+            ]
+        if output_format == "text":
+            return PlainTextResponse(
+                "\n".join(output) + ("\n" if output else ""),
+                media_type="text/plain; charset=utf-8",
+            )
         return {
             "job_id": job.id,
             "path": str(path) if path else None,
@@ -754,7 +1166,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model_root_error = str(exc)
         active_jobs = request.app.state.jobs.active()
         runtime_jobs = [job for job in active_jobs if job.action == "start"]
-        request.app.state.jobs.reconcile_composite_jobs()
+        reconciliation = reconcile_runtime_state()
+        request.app.state.runtime_reconciliation = reconciliation
         active_jobs = request.app.state.jobs.active()
         runtime_jobs = [job for job in active_jobs if job.action == "start"]
         return {
@@ -768,6 +1181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "configured_model_limit": request.app.state.settings.max_running_models,
             "active_jobs": [job.public() for job in active_jobs],
             "resources": board_resources(),
+            "runtime_reconciliation": reconciliation,
         }
 
     @app.post(

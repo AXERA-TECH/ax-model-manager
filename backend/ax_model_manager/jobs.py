@@ -25,6 +25,7 @@ class Job:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     error: str | None = None
+    failure_code: str | None = None
     log_path: str | None = None
     runtime_endpoint: str | None = None
     exit_code: int | None = None
@@ -43,6 +44,7 @@ class Job:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "error": self.error,
+            "failure_code": self.failure_code,
             "log_path": self.log_path,
             "runtime_endpoint": self.runtime_endpoint,
             "exit_code": self.exit_code,
