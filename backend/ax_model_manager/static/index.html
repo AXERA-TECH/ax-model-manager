@@ -145,6 +145,8 @@
         <label>Port<input id="port" type="number" min="18080" max="18089" placeholder="auto"></label>
         <label>Context
           <select id="context" aria-label="Context length">
+            <option value="4096">4K</option>
+            <option value="8192">8K</option>
             <option value="16384">16K</option>
             <option value="32768" selected>32K</option>
             <option value="65536">64K</option>
@@ -158,6 +160,10 @@
         <label>Ctxcp<input id="ctxcp" type="number" min="0" max="128" value="0"></label>
         <label class="checkbox"><input id="mtp" type="checkbox"> MTP</label>
       </div>
+      <p id="launch-task-message" class="message hidden">
+        This package is a one-shot TTS task. It needs text and an output file at request time,
+        so it is not started as a long-running OpenAI-compatible service.
+      </p>
 
       <div class="section-head"><h2>Sampling</h2></div>
       <div class="form-grid">

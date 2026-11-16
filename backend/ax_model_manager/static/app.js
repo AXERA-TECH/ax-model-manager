@@ -11,7 +11,7 @@ let modelRows = [];
 let launchModel = null;
 let launchMode = 'start';
 let launchManifest = null;
-const CONTEXT_OPTIONS = [16384, 32768, 65536, 131072, 262144];
+const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
 
@@ -436,6 +436,7 @@ function renderModels(models, config = {}) {
   for (const model of models) {
     if (!showInvalid && !model.valid) continue;
     const active = model.active_job;
+    const isTask = model.runtime_type === 'task';
     const state = active?.state || (model.ready_to_start ? 'ready' : model.valid ? 'stopped' : 'invalid');
     const card = document.createElement('article');
     card.className = 'model-card';
@@ -460,6 +461,7 @@ function renderModels(models, config = {}) {
       model.manifest_source,
       formatSize(model.size_bytes),
       ...(model.capabilities || []),
+      model.runtime_type === 'task' ? 'one-shot task' : '',
       ...(model.profiles || []),
       active?.port ? `:${active.port}` : '',
     ].filter(Boolean)) {
@@ -493,7 +495,7 @@ function renderModels(models, config = {}) {
         confirm.onclick = () => control(`/api/v1/models/${model.id}/manifest/confirm`, {});
         actions.append(confirm);
       }
-      if (!active && model.ready_to_start) {
+      if (!active && model.ready_to_start && !isTask) {
         const start = document.createElement('button');
         start.className = 'small primary';
         start.textContent = activeCount >= modelLimit ? 'Force start…' : 'Start…';
@@ -508,7 +510,7 @@ function renderModels(models, config = {}) {
         options.onclick = () => openLaunchDialog(model, active ? 'restart' : 'start');
         actions.append(options);
       }
-      if (!active && anyActive && model.ready_to_start) {
+      if (!active && anyActive && model.ready_to_start && !isTask) {
         const switchButton = document.createElement('button');
         switchButton.className = 'small';
         switchButton.textContent = 'Switch to…';
@@ -648,6 +650,7 @@ async function openModelDialog(model) {
     summary.replaceChildren();
     for (const [label, value] of [
       ['State', detail.active_job?.state || (detail.ready_to_start ? 'ready' : detail.valid ? 'stopped' : 'invalid')],
+      ['Runtime', detail.runtime_type === 'task' ? 'one-shot task' : 'long-running service'],
       ['Manifest', detail.manifest_source],
       ['Valid', detail.valid ? 'yes' : 'no'],
       ['Size', formatSize(detail.size_bytes)],
@@ -736,10 +739,10 @@ function currentLaunchPayload() {
     context: CONTEXT_OPTIONS.includes(Number($('context').value))
       ? Number($('context').value)
       : 32768,
-    batch: Number($('batch').value) || 4096,
-    ubatch: Number($('ubatch').value) || 4096,
-    cache_ram: Number($('cache-ram').value) || 0,
-    ctxcp: Number($('ctxcp').value) || 0,
+    batch: $('batch').value === '' ? null : Number($('batch').value),
+    ubatch: $('ubatch').value === '' ? null : Number($('ubatch').value),
+    cache_ram: $('cache-ram').value === '' ? null : Number($('cache-ram').value),
+    ctxcp: $('ctxcp').value === '' ? null : Number($('ctxcp').value),
     mtp: $('mtp').checked,
     sampling: currentSamplingPayload(),
   };
@@ -753,16 +756,13 @@ function applyLaunchProfile(name) {
   const profile = launchManifest?.profiles?.[name] || {};
   const configuredContext = Number(profile.context);
   const context = Number.isFinite(configuredContext)
-    ? CONTEXT_OPTIONS.reduce(
-      (left, right) => Math.abs(right - configuredContext) < Math.abs(left - configuredContext) ? right : left,
-      CONTEXT_OPTIONS[0],
-    )
+    ? (CONTEXT_OPTIONS.includes(configuredContext) ? configuredContext : 32768)
     : 32768;
   $('context').value = String(context);
-  $('batch').value = profile.batch ?? 4096;
-  $('ubatch').value = profile.ubatch ?? 4096;
-  $('cache-ram').value = profile.cache_ram ?? 0;
-  $('ctxcp').value = profile.ctxcp ?? 0;
+  $('batch').value = profile.batch ?? '';
+  $('ubatch').value = profile.ubatch ?? '';
+  $('cache-ram').value = profile.cache_ram ?? '';
+  $('ctxcp').value = profile.ctxcp ?? '';
   $('mtp').checked = Boolean(profile.mtp);
   const sampling = profile.sampling || {};
   $('temperature').value = sampling.temperature ?? 0;
@@ -791,6 +791,14 @@ async function openLaunchDialog(model, mode = 'start') {
     $('launch-model-name').textContent = `${model.name} · ${model.id}`;
     $('launch-submit').textContent = mode === 'switch' ? 'Switch' : mode === 'restart' ? 'Restart' : 'Start';
     $('launch-force').parentElement.classList.toggle('hidden', mode !== 'start');
+    $('launch-submit').classList.toggle(
+      'hidden',
+      model.runtime_type === 'task' || launchManifest?.runtime_type === 'task',
+    );
+    $('launch-task-message').classList.toggle(
+      'hidden',
+      !(model.runtime_type === 'task' || launchManifest?.runtime_type === 'task'),
+    );
 
     const profileSelect = $('profile');
     profileSelect.replaceChildren();

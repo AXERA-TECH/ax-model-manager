@@ -56,8 +56,18 @@ OpenAI-compatible API 直接承载。
 
 - 保存、删除、复制、重置、Diff
 - 启动命令 Preview
-- Context 档位固定为 16K / 32K / 64K / 128K / 256K
+- Context 档位为 4K / 8K / 16K / 32K / 64K / 128K / 256K
 - 支持 batch、ubatch、cache_ram、ctxcp、MTP、端口和采样参数
+
+### 稳定 OCR / ASR / TTS 预设
+
+- MiniCPM-OCR：按包内推荐使用 4K context、256 batch / ubatch、ctxcp 8、4GiB cache RAM
+- Qwen3-ASR：使用最小 4K server 参数，不追加通用 LLM 参数
+- VoxCPM2：使用 8K context、1024 batch、8 threads、1 HTTP thread，并自动加载 acoustic GGUF 和 malloc 环境
+- Qwen3-TTS：识别为 one-shot task，不在长驻服务列表中误启动
+
+这些预设来自当前稳定模型包的 `README.md` / `run.sh` 推荐；后续下载功能会优先使用包内
+机器可读 `model.json`，没有时才使用内置预设。
 
 ### Web Admin UI
 

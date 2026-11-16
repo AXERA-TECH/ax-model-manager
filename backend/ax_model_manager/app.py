@@ -748,6 +748,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         binary = artifact_path(record, "binary")
         model = artifact_path(record, "model")
         mmproj = artifact_path(record, "mmproj")
+        acoustic = artifact_path(record, "acoustic")
         template = artifact_path(record, "chat_template")
         kernels = artifact_path(record, "kernels")
         if binary is None or model is None:
@@ -769,49 +770,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             }
         sampling = profile.get("sampling", {})
+        capabilities = set(record.get("capabilities", []))
+        is_voxcpm2 = acoustic is not None
+        is_asr_server = "audio" in capabilities and "tts" not in capabilities
+
         argv: list[str] = [
             str(binary),
             "-m", str(model),
             "-ngl", "99",
-            "-b", str(profile.get("batch", 4096)),
-            "-ub", str(profile.get("ubatch", 4096)),
-            "--image-max-tokens", str(profile.get("image_max_tokens", 768)),
-            "-c", str(profile.get("context", 32768)),
             "-np", "1",
-            "-ctxcp", str(profile.get("ctxcp", 0)),
-            "--cache-ram", str(profile.get("cache_ram", 0)),
-            "--jinja",
         ]
-        if mmproj is not None:
-            argv.extend(["--mmproj", str(mmproj)])
-        if template is not None:
-            argv.extend(["--chat-template-file", str(template)])
-        argv.extend(["--reasoning", profile.get("reasoning", "off")])
-        if profile.get("mtp", False):
-            argv.extend([
-                "--spec-type", "draft-mtp",
-                "--spec-draft-n-max", "3",
-                "--spec-draft-sampling", "greedy",
-            ])
-        else:
-            argv.extend(["--spec-type", "none"])
+        if "batch" in profile:
+            argv.extend(["-b", str(profile["batch"])])
+        if "ubatch" in profile:
+            argv.extend(["-ub", str(profile["ubatch"])])
+        if "context" in profile:
+            argv.extend(["-c", str(profile["context"])])
+        if "ctxcp" in profile:
+            argv.extend(["-ctxcp", str(profile["ctxcp"])])
+        if "cache_ram" in profile:
+            argv.extend(["--cache-ram", str(profile["cache_ram"])])
+        if "threads" in profile:
+            argv.extend(["-t", str(profile["threads"])])
+        if "http_threads" in profile:
+            argv.extend(["--threads-http", str(profile["http_threads"])])
 
-        if "temperature" in sampling:
-            argv.extend(["--temp", str(sampling["temperature"])])
-        if "top_k" in sampling:
-            argv.extend(["--top-k", str(sampling["top_k"])])
-        if "top_p" in sampling:
-            argv.extend(["--top-p", str(sampling["top_p"])])
-        if "min_p" in sampling:
-            argv.extend(["--min-p", str(sampling["min_p"])])
-        if "repeat_last_n" in sampling:
-            argv.extend(["--repeat-last-n", str(sampling["repeat_last_n"])])
-        if "repeat_penalty" in sampling:
-            argv.extend(["--repeat-penalty", str(sampling["repeat_penalty"])])
-        if "presence_penalty" in sampling:
-            argv.extend(["--presence-penalty", str(sampling["presence_penalty"])])
-        if "frequency_penalty" in sampling:
-            argv.extend(["--frequency-penalty", str(sampling["frequency_penalty"])])
+        if is_voxcpm2:
+            argv.extend(["--voxcpm2-acoustic", str(acoustic)])
+        else:
+            if "image_max_tokens" in profile:
+                argv.extend(["--image-max-tokens", str(profile["image_max_tokens"])])
+            if mmproj is not None:
+                argv.extend(["--mmproj", str(mmproj)])
+            if template is not None:
+                argv.extend(["--chat-template-file", str(template), "--jinja"])
+
+        if not is_voxcpm2 and not is_asr_server and "reasoning" in profile:
+            argv.extend(["--reasoning", profile["reasoning"]])
+        if not is_voxcpm2 and not is_asr_server and "mtp" in profile:
+            if profile["mtp"]:
+                argv.extend([
+                    "--spec-type", "draft-mtp",
+                    "--spec-draft-n-max", "3",
+                    "--spec-draft-sampling", "greedy",
+                ])
+            else:
+                argv.extend(["--spec-type", "none"])
+
+        if not is_voxcpm2 and not is_asr_server:
+            if "temperature" in sampling:
+                argv.extend(["--temp", str(sampling["temperature"])])
+            if "top_k" in sampling:
+                argv.extend(["--top-k", str(sampling["top_k"])])
+            if "top_p" in sampling:
+                argv.extend(["--top-p", str(sampling["top_p"])])
+            if "min_p" in sampling:
+                argv.extend(["--min-p", str(sampling["min_p"])])
+            if "repeat_last_n" in sampling:
+                argv.extend(["--repeat-last-n", str(sampling["repeat_last_n"])])
+            if "repeat_penalty" in sampling:
+                argv.extend(["--repeat-penalty", str(sampling["repeat_penalty"])])
+            if "presence_penalty" in sampling:
+                argv.extend(["--presence-penalty", str(sampling["presence_penalty"])])
+            if "frequency_penalty" in sampling:
+                argv.extend(["--frequency-penalty", str(sampling["frequency_penalty"])])
         argv.extend(["--host", "0.0.0.0", "--port", str(job.port)])
 
         if request.app.state.settings.process_backend == "fake-subprocess":
@@ -830,6 +852,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "LD_LIBRARY_PATH": "/opt/lib",
             "LLAMA_SPEC_ADAPTIVE": "0",
         }
+        for key, value in profile.get("env", {}).items():
+            env[str(key)] = str(value)
         if kernels is not None:
             env["GGML_AXERA_KERNEL_DIR"] = str(kernels)
         return ProcessSpec(
@@ -843,6 +867,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/v1/models/{model_id}/preview", dependencies=[Depends(require_auth)])
     async def preview_launch(model_id: str, body: StartRequest, request: Request) -> dict[str, Any]:
         record = find_model(model_id)
+        if record.get("runtime_type") == "task":
+            raise HTTPException(
+                status_code=409,
+                detail="one-shot task models do not expose a long-running server launch command",
+            )
         profiles = record["manifest"].get("profiles", {})
         if body.profile not in profiles:
             raise HTTPException(status_code=400, detail=f"profile not found: {body.profile}")
@@ -894,7 +923,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 state="loading",
             )
             jobs.event(job, "process_started", pid=handle.pid, runtime_id=handle.runtime_id)
-            timeout = float((overrides or {}).get("startup_timeout_seconds", 0) or 600)
+            base_profile = record["manifest"].get("profiles", {}).get(profile_name, {})
+            timeout = float(
+                (overrides or {}).get("startup_timeout_seconds", 0)
+                or base_profile.get("startup_timeout_seconds", 0)
+                or 600
+            )
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 if not request.app.state.process_manager.is_alive(handle):
@@ -941,6 +975,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ignore_job_ids: set[str] | None = None,
     ) -> Job:
         model_id = str(record["id"])
+        if record.get("runtime_type") == "task":
+            raise HTTPException(
+                status_code=400,
+                detail="one-shot task models cannot be started as a long-running service",
+            )
         if not record["ready_to_start"]:
             raise HTTPException(
                 status_code=400,

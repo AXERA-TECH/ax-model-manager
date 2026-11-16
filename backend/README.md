@@ -42,6 +42,7 @@ python3 -m venv .venv
 | GET | `/api/v1/models/{id}` | 模型详情与 artifact 检查 |
 | GET | `/api/v1/models/{id}/manifest` | package / user / draft manifest |
 | GET | `/api/v1/models/{id}/validate` | manifest 与 artifact 校验 |
+| GET | `/api/v1/models/{id}/preview` | 预览结构化启动命令 |
 | GET | `/api/v1/jobs` | job 列表 |
 | GET | `/api/v1/jobs/{job_id}` | job 状态 |
 | GET | `/api/v1/jobs/{job_id}/logs` | 日志尾部 |
@@ -70,3 +71,7 @@ python3 -m venv .venv
 
 生产 systemd 后端已实现。`max_running_models` 是保守限制，用户确认风险后
 可用 `force: true` 越过。每个 runtime 从 `18080-18089` 分配端口。
+
+OCR / ASR / VoxCPM2 使用稳定包推荐预设。`runtime_type=task` 的 Qwen3-TTS
+包需要请求期文本和输出路径，不能作为长驻 OpenAI-compatible service 启动；
+API 和 UI 都会拒绝这类 start。

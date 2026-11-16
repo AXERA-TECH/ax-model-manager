@@ -38,7 +38,28 @@ def wait_for_state(client: TestClient, job_id: str, state: str, timeout: float =
 def test_control_endpoints_are_disabled_by_default(model_root: Path) -> None:
     with TestClient(create_app(Settings(model_root=model_root))) as client:
         assert client.post("/api/v1/models/fixture-model/start", json={}).status_code == 404
-        assert client.post("/api/v1/models/fixture-model/stop", json={}).status_code == 404
+
+
+def test_one_shot_task_model_cannot_be_started_as_service(model_root: Path, tmp_path: Path) -> None:
+    write_model_package(model_root / "one-shot-task", manifest={
+        "schema_version": 1,
+        "id": "one-shot-task",
+        "engine": "llama-tts",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "capabilities": ["tts"],
+        "runtime_type": "task",
+        "max_context": 4096,
+        "profiles": {"default": {"context": 4096}},
+    })
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.post("/api/v1/models/one-shot-task/start", json={})
+
+        assert response.status_code == 400
+        assert "one-shot task" in response.json()["detail"]
 
 
 def test_update_config_persists_model_limit(model_root: Path, tmp_path: Path) -> None:

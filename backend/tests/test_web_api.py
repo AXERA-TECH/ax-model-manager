@@ -103,6 +103,9 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         ).read_text(encoding="utf-8")
         assert 'id="launch-dialog"' in index.text
         assert 'id="launch-force"' in index.text
+        assert '<option value="4096">4K</option>' in index.text
+        assert '<option value="8192">8K</option>' in index.text
+        assert 'id="launch-task-message"' in index.text
         assert '<option value="16384">16K</option>' in index.text
         assert '<option value="262144">256K</option>' in index.text
         assert 'class="panel audit-panel"' in index.text
@@ -113,3 +116,97 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert 'id="follow-log"' in index.text
         assert client.get("/ui/app.js").status_code == 200
         assert client.get("/ui/../config.py").status_code == 404
+
+
+def test_asr_preview_uses_minimal_recommended_server_arguments(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    from conftest import write_model_package
+
+    package = write_model_package(model_root / "qwen3-asr", manifest={
+        "schema_version": 1,
+        "id": "qwen3-asr",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+            "mmproj": "mmproj-fixture.gguf",
+            "kernels": "kernels",
+        },
+        "capabilities": ["audio"],
+        "runtime_type": "service",
+        "max_context": 4096,
+        "profiles": {"default": {"context": 4096}},
+    })
+
+    with make_client(model_root, tmp_path) as client:
+        response = client.post("/api/v1/models/qwen3-asr/preview", json={})
+
+        assert response.status_code == 200
+        argv = response.json()["argv"]
+        assert argv == [
+            str(package / "bin/llama-server"),
+            "-m", str(package / "fixture.gguf"),
+            "-ngl", "99",
+            "-np", "1",
+            "-c", "4096",
+            "--mmproj", str(package / "mmproj-fixture.gguf"),
+            "--host", "0.0.0.0",
+            "--port", "18080",
+        ]
+        assert "--jinja" not in argv
+        assert "--reasoning" not in argv
+        assert "--spec-type" not in argv
+
+
+def test_voxcpm2_preview_uses_acoustic_model_and_malloc_environment(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    from conftest import write_model_package
+
+    package = write_model_package(model_root / "voxcpm2", manifest={
+        "schema_version": 1,
+        "id": "voxcpm2",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+            "acoustic": "acoustic.gguf",
+            "kernels": "kernels",
+        },
+        "capabilities": ["tts"],
+        "runtime_type": "service",
+        "max_context": 8192,
+        "profiles": {
+            "default": {
+                "context": 8192,
+                "batch": 1024,
+                "threads": 8,
+                "http_threads": 1,
+                "startup_timeout_seconds": 180,
+                "env": {
+                    "MALLOC_ARENA_MAX": "2",
+                    "MALLOC_MMAP_THRESHOLD_": "131072",
+                    "MALLOC_TRIM_THRESHOLD_": "131072",
+                },
+            },
+        },
+    })
+    (package / "acoustic.gguf").write_bytes(b"0" * 128)
+
+    with make_client(model_root, tmp_path) as client:
+        response = client.post("/api/v1/models/voxcpm2/preview", json={})
+
+        assert response.status_code == 200
+        payload = response.json()
+        argv = payload["argv"]
+        assert "--voxcpm2-acoustic" in argv
+        assert str(package / "acoustic.gguf") in argv
+        assert "-b" in argv and "1024" in argv
+        assert "-t" in argv and "8" in argv
+        assert "--threads-http" in argv and "1" in argv
+        assert "--jinja" not in argv
+        assert payload["env"]["MALLOC_ARENA_MAX"] == "2"
+        assert payload["env"]["MALLOC_TRIM_THRESHOLD_"] == "131072"

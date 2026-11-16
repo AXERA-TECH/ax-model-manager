@@ -60,7 +60,7 @@ def _directory_stats(model_dir: Path) -> tuple[int, int]:
 
 def _artifact_reports(model_dir: Path, artifacts: dict[str, Any]) -> list[dict[str, Any]]:
     reports: list[dict[str, Any]] = []
-    for key in ("binary", "model", "mmproj", "chat_template", "kernels"):
+    for key in ("binary", "model", "mmproj", "acoustic", "chat_template", "kernels"):
         reports.append(check_artifact(
             model_dir,
             key,
@@ -114,7 +114,8 @@ def inspect_model_directory(
     size_bytes, file_count = _directory_stats(model_dir)
     model_id = manifest.get("id") or raw_relative_dir
     valid = not errors
-    ready_to_start = valid and not (source == "draft")
+    runtime_type = str(manifest.get("runtime_type", "service"))
+    ready_to_start = valid and source != "draft" and runtime_type != "task"
 
     return {
         "id": model_id,
@@ -131,6 +132,7 @@ def inspect_model_directory(
         "errors": sorted(set(errors)),
         "warnings": sorted(set(warnings)),
         "capabilities": manifest.get("capabilities", ["text"]),
+        "runtime_type": runtime_type,
         "max_context": manifest.get("max_context"),
         "estimated_cmm_mb": manifest.get("estimated_cmm_mb"),
         "profiles": list(manifest.get("profiles", {}).keys()),
@@ -175,6 +177,7 @@ def scan_models(
                     "errors": ["model directory symlink escapes model root"],
                     "warnings": [],
                     "capabilities": [],
+                    "runtime_type": "service",
                     "max_context": None,
                     "estimated_cmm_mb": None,
                     "profiles": [],
@@ -222,6 +225,7 @@ def scan_models(
                 "errors": [str(exc)],
                 "warnings": [],
                 "capabilities": [],
+                "runtime_type": "service",
                 "max_context": None,
                 "estimated_cmm_mb": None,
                 "profiles": [],

@@ -12,12 +12,19 @@ ARTIFACT_KINDS = {
     "binary": "file",
     "model": "file",
     "mmproj": "file",
+    "acoustic": "file",
     "chat_template": "file",
     "kernels": "directory",
 }
 PROFILE_KEYS = {
     "context", "batch", "ubatch", "cache_ram", "ctxcp", "mtp", "reasoning",
     "image_max_tokens", "port", "startup_timeout_seconds", "sampling",
+    "threads", "http_threads", "env",
+}
+SUPPORTED_PROFILE_ENV = {
+    "MALLOC_ARENA_MAX",
+    "MALLOC_MMAP_THRESHOLD_",
+    "MALLOC_TRIM_THRESHOLD_",
 }
 SAMPLING_KEYS = {
     "temperature", "top_k", "top_p", "min_p", "repeat_last_n",
@@ -147,6 +154,8 @@ def _validate_profiles(profiles: Any) -> tuple[dict[str, Any], list[str], list[s
             "image_max_tokens": (0, 100_000),
             "port": (1, 65_535),
             "startup_timeout_seconds": (1, 86_400),
+            "threads": (1, 1024),
+            "http_threads": (1, 1024),
         }
         clean: dict[str, Any] = {}
         for field_name, (minimum, maximum) in integer_fields.items():
@@ -168,6 +177,26 @@ def _validate_profiles(profiles: Any) -> tuple[dict[str, Any], list[str], list[s
                 errors.append(f"profiles.{name}.reasoning must be off, low, medium, or high")
             else:
                 clean["reasoning"] = profile["reasoning"]
+
+        if "env" in profile:
+            environment = profile["env"]
+            if not isinstance(environment, dict):
+                errors.append(f"profiles.{name}.env must be an object")
+            else:
+                unknown_environment = sorted(set(environment) - SUPPORTED_PROFILE_ENV)
+                if unknown_environment:
+                    errors.append(
+                        f"profiles.{name}.env has unknown keys: {', '.join(unknown_environment)}"
+                    )
+                clean_environment: dict[str, str] = {}
+                for key, value in environment.items():
+                    if key not in SUPPORTED_PROFILE_ENV:
+                        continue
+                    if isinstance(value, bool) or not isinstance(value, (int, str)):
+                        errors.append(f"profiles.{name}.env.{key} must be an integer or string")
+                    else:
+                        clean_environment[key] = str(value)
+                clean["env"] = clean_environment
 
         if "sampling" in profile:
             sampling = profile["sampling"]
@@ -256,6 +285,10 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
         if unknown_capabilities:
             errors.append(f"capabilities has unknown values: {', '.join(unknown_capabilities)}")
 
+    runtime_type = manifest.get("runtime_type", "service")
+    if runtime_type not in {"service", "task"}:
+        errors.append("runtime_type must be service or task")
+
     profiles, profile_errors, profile_warnings = _validate_profiles(manifest.get("profiles"))
     errors.extend(profile_errors)
     warnings.extend(profile_warnings)
@@ -264,6 +297,7 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
         **manifest,
         "artifacts": artifacts,
         "capabilities": capabilities,
+        "runtime_type": runtime_type,
         "max_context": max_context,
         "profiles": profiles,
     }
@@ -319,6 +353,92 @@ def infer_manifest(model_dir: Path) -> dict[str, Any]:
     if kernels.is_dir():
         artifacts["kernels"] = safe_relative(kernels)
 
+    folder_name = model_dir.name.lower()
+    run_script = model_dir / "run.sh"
+    try:
+        package_text = run_script.read_text(encoding="utf-8").lower()
+    except OSError:
+        package_text = ""
+
+    capabilities = (
+        ["tts"] if binary.name == "llama-tts"
+        else ["audio"] if "asr" in folder_name
+        else ["text", "image"] if mmproj
+        else ["text"]
+    )
+    max_context = 32768
+    estimated_cmm_mb: int | None = None
+    runtime_type = "task" if binary.name == "llama-tts" else "service"
+    default_profile: dict[str, Any] = {
+        "context": 32768,
+        "batch": 4096,
+        "ubatch": 4096,
+        "cache_ram": 0,
+        "ctxcp": 0,
+        "mtp": False,
+        "reasoning": "off",
+    }
+
+    # OCR / ASR / TTS packages are intentionally treated as stable packages.
+    # Their launch semantics differ from general LLM packages, so infer their
+    # recommended server/task defaults from the package's own run.sh instead
+    # of falling back to a generic 32K/4096 LLM profile.
+    if "voxcpm2" in folder_name or "--voxcpm2-acoustic" in package_text:
+        acoustic = next(
+            (item for item in model_dir.rglob("*.gguf") if "acoustic" in item.name.lower()),
+            None,
+        )
+        base_lm = next(
+            (item for item in model_dir.rglob("*.gguf") if "baselm" in item.name.lower()),
+            model_file,
+        )
+        if base_lm is not None:
+            artifacts["model"] = safe_relative(base_lm)
+        if acoustic is not None:
+            artifacts["acoustic"] = safe_relative(acoustic)
+        capabilities = ["tts"]
+        max_context = 8192
+        estimated_cmm_mb = 3072
+        runtime_type = "service"
+        default_profile = {
+            "context": 8192,
+            "batch": 1024,
+            "threads": 8,
+            "http_threads": 1,
+            "startup_timeout_seconds": 180,
+            "env": {
+                "MALLOC_ARENA_MAX": "2",
+                "MALLOC_MMAP_THRESHOLD_": "131072",
+                "MALLOC_TRIM_THRESHOLD_": "131072",
+            },
+        }
+    elif "minicpm-ocr" in folder_name or "minicpm-ocr" in package_text:
+        capabilities = ["image", "text"]
+        max_context = 4096
+        default_profile = {
+            "context": 4096,
+            "batch": 256,
+            "ubatch": 256,
+            "cache_ram": 4096,
+            "ctxcp": 8,
+            "mtp": False,
+            "reasoning": "off",
+            "image_max_tokens": 4096,
+            "sampling": {"temperature": 0.0, "top_k": 1},
+        }
+    elif "qwen3-asr" in folder_name or "qwen3-asr" in package_text:
+        capabilities = ["audio"]
+        max_context = 4096
+        default_profile = {"context": 4096}
+    elif binary.name == "llama-tts":
+        capabilities = ["tts"]
+        max_context = 4096
+        runtime_type = "task"
+        default_profile = {
+            "context": 4096,
+            "sampling": {"temperature": 0.9, "top_k": 50},
+        }
+
     return {
         "schema_version": 1,
         "id": folder_id,
@@ -328,23 +448,9 @@ def infer_manifest(model_dir: Path) -> dict[str, Any]:
         "binary": safe_relative(binary),
         "working_directory": ".",
         "artifacts": artifacts,
-        "capabilities": (
-            ["tts"] if binary.name == "llama-tts"
-            else ["audio"] if "asr" in model_dir.name.lower()
-            else ["text", "image"] if mmproj
-            else ["text"]
-        ),
-        "max_context": 32768,
-        "estimated_cmm_mb": None,
-        "profiles": {
-            "default": {
-                "context": 32768,
-                "batch": 4096,
-                "ubatch": 4096,
-                "cache_ram": 0,
-                "ctxcp": 0,
-                "mtp": False,
-                "reasoning": "off",
-            }
-        },
+        "capabilities": capabilities,
+        "runtime_type": runtime_type,
+        "max_context": max_context,
+        "estimated_cmm_mb": estimated_cmm_mb,
+        "profiles": {"default": default_profile},
     }

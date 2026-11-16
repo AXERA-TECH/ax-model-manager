@@ -100,6 +100,29 @@ def test_scan_infers_tts_engine(model_root: Path) -> None:
     assert "tts" in record["capabilities"]
 
 
+def test_one_shot_task_manifest_is_not_service_startable(model_root: Path) -> None:
+    package = model_root / "one-shot-task"
+    write_model_package(package, manifest={
+        "schema_version": 1,
+        "id": "one-shot-task",
+        "engine": "llama-tts",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "capabilities": ["tts"],
+        "runtime_type": "task",
+        "max_context": 4096,
+        "profiles": {"default": {"context": 4096}},
+    })
+
+    record = next(item for item in scan_models(model_root) if item["id"] == "one-shot-task")
+
+    assert record["valid"] is True
+    assert record["runtime_type"] == "task"
+    assert record["ready_to_start"] is False
+
+
 def test_user_override_manifest_makes_draft_ready(model_root: Path, tmp_path: Path) -> None:
     overrides = tmp_path / "overrides"
     overrides.mkdir()
