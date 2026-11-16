@@ -34,6 +34,7 @@ SAMPLING_RANGES = {
     "frequency_penalty": (-2.0, 2.0),
 }
 CAPABILITIES = {"text", "image", "audio", "tts", "image_gen"}
+ENGINES = {"llama-server", "llama-tts", "llama-mtmd-cli", "llama-cli"}
 
 
 @dataclass
@@ -223,8 +224,9 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
     if not is_safe_id(model_id):
         errors.append("id must match [a-z0-9][a-z0-9_.-] and cannot be empty")
 
-    if manifest.get("engine") != "llama-server":
-        errors.append("engine must be llama-server")
+    engine = manifest.get("engine")
+    if engine not in ENGINES:
+        errors.append(f"engine must be one of: {', '.join(sorted(ENGINES))}")
 
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -274,14 +276,33 @@ def infer_manifest(model_dir: Path) -> dict[str, Any]:
     def safe_relative(path: Path) -> str:
         return path.relative_to(model_dir).as_posix()
 
-    binary = model_dir / "bin" / "llama-server"
-    if not binary.is_file():
-        candidates = sorted(model_dir.rglob("llama-server"))
-        binary = candidates[0] if candidates else binary
+    binaries = sorted(
+        item for item in (model_dir / "bin").glob("llama-*")
+        if item.is_file()
+    ) if (model_dir / "bin").is_dir() else []
+    binary_preferences = [
+        "llama-server",
+        "llama-tts",
+        "llama-mtmd-cli",
+        "llama-cli",
+    ]
+    binary = next((item for name in binary_preferences for item in binaries if item.name == name), None)
+    if binary is None and binaries:
+        binary = binaries[0]
+    if binary is None:
+        binary = model_dir / "bin" / "llama-server"
 
-    ggufs = [item for item in model_dir.rglob("*.gguf") if item.is_file() and ".staging" not in item.parts]
+    ggufs = [
+        item for item in model_dir.rglob("*.gguf")
+        if item.is_file()
+        and ".staging" not in item.parts
+        and not item.name.lower().startswith("mmproj-")
+    ]
     model_file = max(ggufs, key=lambda item: item.stat().st_size, default=None)
-    mmprojs = [item for item in ggufs if "mmproj" in item.name.lower()]
+    mmprojs = [
+        item for item in model_dir.rglob("*.gguf")
+        if item.is_file() and "mmproj" in item.name.lower()
+    ]
     mmproj = mmprojs[0] if mmprojs else None
     templates = [item for item in model_dir.rglob("chat_template.jinja") if item.is_file()]
     template = templates[0] if templates else None
@@ -303,11 +324,16 @@ def infer_manifest(model_dir: Path) -> dict[str, Any]:
         "id": folder_id,
         "name": model_dir.name.removesuffix("-AX8860-llama.cpp"),
         "version": "",
-        "engine": "llama-server",
-        "binary": "./bin/llama-server",
+        "engine": binary.name if binary.name in ENGINES else "llama-server",
+        "binary": safe_relative(binary),
         "working_directory": ".",
         "artifacts": artifacts,
-        "capabilities": ["text", "image"] if mmproj else ["text"],
+        "capabilities": (
+            ["tts"] if binary.name == "llama-tts"
+            else ["audio"] if "asr" in model_dir.name.lower()
+            else ["text", "image"] if mmproj
+            else ["text"]
+        ),
         "max_context": 32768,
         "estimated_cmm_mb": None,
         "profiles": {

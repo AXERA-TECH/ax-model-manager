@@ -6,6 +6,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -14,12 +15,19 @@ class ProcessSpec:
     cwd: Path
     log_path: Path
     env: dict[str, str] | None = None
+    runtime_id: str = ""
+
+
+@dataclass(frozen=True)
+class RuntimeHandle:
+    runtime_id: str
+    pid: int | None = None
 
 
 class FakeSubprocessManager:
     """Development process backend. Production systemd support is intentionally absent."""
 
-    def start(self, spec: ProcessSpec) -> int:
+    def start(self, spec: ProcessSpec) -> RuntimeHandle:
         spec.log_path.parent.mkdir(parents=True, exist_ok=True)
         log_handle = spec.log_path.open("a", encoding="utf-8")
         env = os.environ.copy()
@@ -34,9 +42,12 @@ class FakeSubprocessManager:
             env=env,
             start_new_session=True,
         )
-        return process.pid
+        return RuntimeHandle(runtime_id=spec.runtime_id or f"p-{process.pid}", pid=process.pid)
 
-    def stop(self, pid: int, timeout: float = 5.0) -> int | None:
+    def stop(self, handle: RuntimeHandle, timeout: float = 5.0) -> int | None:
+        pid = handle.pid
+        if pid is None:
+            return None
         try:
             os.killpg(pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -62,11 +73,76 @@ class FakeSubprocessManager:
         except ChildProcessError:
             return None
 
-    def is_alive(self, pid: int | None) -> bool:
-        if pid is None:
+    def is_alive(self, handle: RuntimeHandle) -> bool:
+        if handle.pid is None:
             return False
         try:
-            waited, _ = os.waitpid(pid, os.WNOHANG)
+            waited, _ = os.waitpid(handle.pid, os.WNOHANG)
             return waited == 0
         except ChildProcessError:
             return False
+
+
+class SystemdRunManager:
+    """Production candidate backend using transient per-runtime systemd units."""
+
+    def _systemctl(
+        self,
+        *args: str,
+        check: bool = True,
+        timeout: float | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["systemctl", *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=check,
+            timeout=timeout,
+        )
+
+    def start(self, spec: ProcessSpec) -> RuntimeHandle:
+        if not spec.runtime_id:
+            raise ValueError("systemd backend requires runtime_id")
+        spec.log_path.parent.mkdir(parents=True, exist_ok=True)
+        spec.log_path.touch(exist_ok=True)
+        command = [
+            "systemd-run",
+            "--quiet",
+            f"--unit={spec.runtime_id}",
+            "--collect",
+            "--property=Type=exec",
+            "--property=Restart=no",
+            f"--property=WorkingDirectory={spec.cwd}",
+            f"--property=StandardOutput=append:{spec.log_path}",
+            f"--property=StandardError=append:{spec.log_path}",
+        ]
+        for key, value in (spec.env or {}).items():
+            command.append(f"--setenv={key}={value}")
+        command.extend(spec.argv)
+        subprocess.run(command, check=True)
+        completed = self._systemctl("show", spec.runtime_id, "--property=MainPID", "--value")
+        pid = int(completed.stdout.strip() or "0")
+        return RuntimeHandle(runtime_id=spec.runtime_id, pid=pid or None)
+
+    def stop(self, handle: RuntimeHandle, timeout: float = 30.0) -> int | None:
+        try:
+            self._systemctl("stop", handle.runtime_id, timeout=timeout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+        try:
+            completed = self._systemctl(
+                "show",
+                handle.runtime_id,
+                "--property=ExecMainStatus",
+                "--value",
+                check=False,
+            )
+            value = completed.stdout.strip()
+            return int(value) if value else None
+        except (OSError, ValueError):
+            return None
+
+    def is_alive(self, handle: RuntimeHandle) -> bool:
+        completed = self._systemctl("is-active", handle.runtime_id, check=False)
+        return completed.stdout.strip() in {"active", "activating", "reloading"}

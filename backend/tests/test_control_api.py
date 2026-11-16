@@ -40,6 +40,22 @@ def test_control_endpoints_are_disabled_by_default(model_root: Path) -> None:
         assert client.post("/api/v1/models/fixture-model/stop", json={}).status_code == 404
 
 
+def test_confirm_draft_manifest_without_touching_model_directory(model_root: Path, tmp_path: Path) -> None:
+    package = model_root / "draft-model"
+    from conftest import write_model_package
+    write_model_package(package, manifest=False)
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        before = client.get("/api/v1/models/draft-model").json()
+        assert before["manifest_source"] == "draft"
+        assert before["ready_to_start"] is False
+
+        confirmed = client.post("/api/v1/models/draft-model/manifest/confirm")
+        assert confirmed.status_code == 200
+        assert confirmed.json()["ready_to_start"] is True
+        assert not (package / "model.json").exists()
+
+
 def test_start_and_stop_fake_model(model_root: Path, tmp_path: Path) -> None:
     with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
         started = client.post(

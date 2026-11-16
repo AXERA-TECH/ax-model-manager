@@ -77,6 +77,43 @@ def test_scan_requires_existing_model_root(tmp_path: Path) -> None:
         raise AssertionError("ModelRootError not raised")
 
 
+def test_scan_ignores_directories_without_model_artifacts(model_root: Path) -> None:
+    reports = model_root / "benchmark-reports"
+    reports.mkdir()
+    (reports / "result.md").write_text("report", encoding="utf-8")
+    records = scan_models(model_root)
+    assert all(record["relative_directory"] != "benchmark-reports" for record in records)
+
+
+def test_scan_infers_tts_engine(model_root: Path) -> None:
+    tts = model_root / "Qwen3-TTS-0.6B-AX8860-llama.cpp"
+    tts.mkdir()
+    binary = tts / "bin" / "llama-tts"
+    binary.parent.mkdir()
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    (tts / "qwen3-tts.gguf").write_bytes(b"0" * 128)
+    (tts / "mmproj-qwen3-tts.gguf").write_bytes(b"0" * 64)
+    record = next(item for item in scan_models(model_root) if item["id"] == "qwen3-tts-0.6b")
+    assert record["manifest"]["engine"] == "llama-tts"
+    assert record["manifest"]["artifacts"]["binary"] == "bin/llama-tts"
+    assert "tts" in record["capabilities"]
+
+
+def test_user_override_manifest_makes_draft_ready(model_root: Path, tmp_path: Path) -> None:
+    overrides = tmp_path / "overrides"
+    overrides.mkdir()
+    record = scan_models(model_root)[0]
+    (overrides / "fixture-model-AX8860-llama.cpp.json").write_text(
+        json.dumps(record["manifest"]),
+        encoding="utf-8",
+    )
+    overridden = scan_models(model_root, overrides)[0]
+    assert overridden["manifest_source"] == "user"
+    assert overridden["manifest_review_required"] is False
+    assert overridden["ready_to_start"] is True
+
+
 def test_scan_rejects_artifact_symlink_escape(model_root: Path, tmp_path: Path) -> None:
     package = model_root / "fixture-model-AX8860-llama.cpp"
     outside = tmp_path / "outside.gguf"

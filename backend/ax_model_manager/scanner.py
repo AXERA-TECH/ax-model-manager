@@ -13,6 +13,20 @@ from .manifest import (
 )
 
 
+def _looks_like_model(directory: Path) -> bool:
+    """Ignore report/work directories that contain neither binaries nor model weights."""
+
+    if (directory / "model.json").is_file():
+        return True
+    bin_dir = directory / "bin"
+    if bin_dir.is_dir() and any(item.is_file() for item in bin_dir.glob("llama-*")):
+        return True
+    return any(
+        item.is_file() and not item.name.lower().startswith("mmproj-")
+        for item in directory.rglob("*.gguf")
+    )
+
+
 class ModelRootError(RuntimeError):
     pass
 
@@ -56,7 +70,11 @@ def _artifact_reports(model_dir: Path, artifacts: dict[str, Any]) -> list[dict[s
     return reports
 
 
-def inspect_model_directory(model_root: Path, directory: Path) -> dict[str, Any]:
+def inspect_model_directory(
+    model_root: Path,
+    directory: Path,
+    override_manifest: Path | None = None,
+) -> dict[str, Any]:
     root = model_root.expanduser().resolve(strict=False)
     model_dir = directory.expanduser().resolve(strict=False)
     if model_dir != root and root not in model_dir.parents:
@@ -68,11 +86,11 @@ def inspect_model_directory(model_root: Path, directory: Path) -> dict[str, Any]
     source = "draft"
     manifest: dict[str, Any] = {}
 
-    package_manifest = directory / "model.json"
+    package_manifest = override_manifest or directory / "model.json"
     if package_manifest.is_file():
         try:
             manifest = parse_manifest_file(package_manifest)
-            source = "package"
+            source = "user" if override_manifest else "package"
         except ValueError as exc:
             errors.append(str(exc))
             source = "invalid"
@@ -107,7 +125,7 @@ def inspect_model_directory(model_root: Path, directory: Path) -> dict[str, Any]
         "relative_directory": raw_relative_dir,
         "manifest_source": source,
         "manifest_valid": result.valid,
-        "manifest_review_required": source != "package",
+        "manifest_review_required": source not in {"package", "user"},
         "ready_to_start": ready_to_start,
         "valid": valid,
         "errors": sorted(set(errors)),
@@ -123,7 +141,10 @@ def inspect_model_directory(model_root: Path, directory: Path) -> dict[str, Any]
     }
 
 
-def scan_models(model_root: Path) -> list[dict[str, Any]]:
+def scan_models(
+    model_root: Path,
+    overrides_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     root = model_root.expanduser()
     if not root.is_dir():
         raise ModelRootError(f"model root does not exist or is not a directory: {root}")
@@ -136,7 +157,6 @@ def scan_models(model_root: Path) -> list[dict[str, Any]]:
             continue
         if not entry.is_dir() and not entry.is_symlink():
             continue
-
         try:
             resolved_entry = entry.resolve(strict=False)
             if resolved_entry != resolved_root and resolved_root not in resolved_entry.parents:
@@ -167,8 +187,19 @@ def scan_models(model_root: Path) -> list[dict[str, Any]]:
                 continue
             if not entry.is_dir():
                 continue
+            if not _looks_like_model(entry):
+                continue
 
-            record = inspect_model_directory(root, entry)
+            override_path = (
+                overrides_dir / f"{entry.name}.json"
+                if overrides_dir is not None
+                else None
+            )
+            record = inspect_model_directory(
+                root,
+                entry,
+                override_path if override_path and override_path.is_file() else None,
+            )
             if record["id"] in seen_ids:
                 record["valid"] = False
                 record["ready_to_start"] = False

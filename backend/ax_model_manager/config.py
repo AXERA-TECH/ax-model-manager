@@ -33,8 +33,11 @@ class Settings:
             raise ValueError("llama_port_min cannot be greater than llama_port_max")
         if self.llama_port_min <= self.manager_port <= self.llama_port_max:
             raise ValueError("manager_port must not overlap the llama-server port range")
-        if self.enable_control and self.process_backend not in {"fake-subprocess"}:
-            raise ValueError("enable_control currently requires process_backend=fake-subprocess")
+        allowed_backends = {"fake-subprocess", "systemd"}
+        if self.enable_control and self.process_backend not in allowed_backends:
+            raise ValueError(
+                "enable_control requires process_backend=fake-subprocess or systemd"
+            )
         if self.max_running_models < 1:
             raise ValueError("max_running_models must be at least 1")
 

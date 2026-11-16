@@ -109,3 +109,44 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 FastAPI 仍然只负责管理平面；聊天推理继续由 llama-server 的 OpenAI-compatible API 提供。
 
 当前 `fake-subprocess` 后端只用于本机测试，不是生产进程管理方案。
+
+## 上海板部署状态
+
+2026-11-16 已在上海板上部署验证：
+
+```text
+Model Manager API: http://<board-ip>:18090
+部署路径: /opt/axera-model-manager
+配置: /etc/axera/model-manager/config.json
+状态数据: /var/lib/axera-model-manager
+systemd: axera-model-manager.service
+```
+
+当前能力：
+
+```text
+扫描 /mnt/models 下 13 个模型目录
+识别 llama-server / llama-tts
+manifest draft 确认
+systemd-run 启动独立 transient unit
+/health ready 检测
+/slots IN USE guard
+停止模型
+job 持久化
+audit 记录
+```
+
+已验证：
+
+```text
+Qwen3.5-0.8B 启动 / 停止
+Qwen3.6-35B-A3B 启动 / 停止
+Manager 重启不影响运行中的 llama-server
+Manager 重启后 job 状态可恢复
+```
+
+访问 API 需要部署时生成的 Bearer token。本机不把 token 写入 Git 仓库，密钥文件位于：
+
+```text
+<repository-directory>/.secrets/shanghai.token
+```
