@@ -137,6 +137,14 @@ function renderModels(models) {
         start.onclick = () => startModel(model.id);
         actions.append(start);
       }
+      if (model.valid) {
+        const saveProfile = document.createElement('button');
+        saveProfile.className = 'small';
+        saveProfile.textContent = 'Save options';
+        saveProfile.title = 'Save the current start options to this model default profile';
+        saveProfile.onclick = () => saveProfileForModel(model.id);
+        actions.append(saveProfile);
+      }
       if (!active && anyActive && model.ready_to_start) {
         const switchButton = document.createElement('button');
         switchButton.className = 'small';
@@ -150,6 +158,11 @@ function renderModels(models) {
         stop.textContent = 'Stop';
         stop.onclick = () => stopModel(model.id);
         actions.append(stop);
+        const restart = document.createElement('button');
+        restart.className = 'small';
+        restart.textContent = 'Restart';
+        restart.onclick = () => restartModel(model.id);
+        actions.append(restart);
       }
     }
 
@@ -256,8 +269,21 @@ async function control(path, body) {
   }
 }
 
-function startModel(id) {
-  const payload = {
+function currentSamplingPayload() {
+  return {
+    temperature: Number($('temperature').value) || 0,
+    top_k: Number($('top-k').value) || 0,
+    top_p: Number($('top-p').value) || 1,
+    min_p: Number($('min-p').value) || 0,
+    repeat_last_n: Number($('repeat-last-n').value) || 0,
+    repeat_penalty: Number($('repeat-penalty').value) || 1,
+    presence_penalty: Number($('presence-penalty').value) || 0,
+    frequency_penalty: Number($('frequency-penalty').value) || 0,
+  };
+}
+
+function currentLaunchPayload() {
+  return {
     profile: 'default',
     context: Number($('context').value) || 4096,
     batch: Number($('batch').value) || 4096,
@@ -265,7 +291,12 @@ function startModel(id) {
     cache_ram: Number($('cache-ram').value) || 0,
     ctxcp: Number($('ctxcp').value) || 0,
     mtp: $('mtp').checked,
+    sampling: currentSamplingPayload(),
   };
+}
+
+function startModel(id) {
+  const payload = { ...currentLaunchPayload() };
   const port = Number($('port').value);
   if (port) payload.port = port;
   control(`/api/v1/models/${id}/start`, payload);
@@ -277,16 +308,33 @@ function stopModel(id) {
 
 function switchModel(id) {
   const payload = {
-    profile: 'default',
-    context: Number($('context').value) || 4096,
-    batch: Number($('batch').value) || 4096,
-    ubatch: Number($('ubatch').value) || 4096,
-    cache_ram: Number($('cache-ram').value) || 0,
-    ctxcp: Number($('ctxcp').value) || 0,
-    mtp: $('mtp').checked,
+    ...currentLaunchPayload(),
     stop_timeout_seconds: 20,
   };
   control(`/api/v1/models/${id}/switch-to`, payload);
+}
+
+function restartModel(id) {
+  const payload = {
+    ...currentLaunchPayload(),
+    stop_timeout_seconds: 20,
+  };
+  control(`/api/v1/models/${id}/restart`, payload);
+}
+
+async function saveProfileForModel(id) {
+  if (!confirm(`Save the current start options as the default profile for ${id}?`)) return;
+  const payload = { ...currentLaunchPayload(), reasoning: 'off' };
+  try {
+    await api(`/api/v1/models/${id}/profiles/default`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    clearAlert();
+    await refresh();
+  } catch (error) {
+    showAlert(error.message);
+  }
 }
 
 async function openLog(jobId) {

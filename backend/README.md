@@ -89,6 +89,9 @@ Additional endpoints when `enable_control=true`:
 | POST | `/api/v1/models/{id}/start` | Start the selected runtime |
 | POST | `/api/v1/models/{id}/stop` | Stop with IN USE guard |
 | POST | `/api/v1/models/{id}/switch-to` | Stop current runtime and start target |
+| POST | `/api/v1/models/{id}/restart` | Stop and start the same model |
+| PUT | `/api/v1/models/{id}/profiles/{profile}` | Save a structured launch profile |
+| DELETE | `/api/v1/models/{id}/profiles/{profile}` | Delete a non-default profile |
 | POST | `/api/v1/models/{id}/manifest/confirm` | Confirm an inferred manifest |
 | GET | `/api/v1/jobs` | List jobs |
 | GET | `/api/v1/jobs/{job_id}` | Get job state |
@@ -96,5 +99,4 @@ Additional endpoints when `enable_control=true`:
 | GET | `/api/v1/audit` | Read audit records |
 | GET | `/api/v1/dashboard` | Aggregated dashboard state |
 
-Production systemd start/stop/switch is implemented. Restart is not implemented
-yet.
+Production systemd start/stop/switch/restart is implemented.

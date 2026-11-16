@@ -115,20 +115,23 @@ class JobStore:
                 return job
         return None
 
-    def reconcile_switch_jobs(self) -> None:
-        """Close a switch job after its underlying start runtime has stopped."""
+    def reconcile_composite_jobs(self) -> None:
+        """Close a completed composite job after its runtime has stopped."""
 
-        for switch_job in self.list():
-            if switch_job.action != "switch" or switch_job.state not in ACTIVE_STATES:
+        for composite_job in self.list():
+            if (
+                composite_job.action not in {"switch", "restart"}
+                or composite_job.state != "running"
+            ):
                 continue
             has_runtime = any(
                 job.action == "start"
-                and job.model_id == switch_job.model_id
+                and job.model_id == composite_job.model_id
                 and job.state in ACTIVE_STATES
                 for job in self.list()
             )
             if not has_runtime:
-                self.update(switch_job, state="stopped")
+                self.update(composite_job, state="stopped")
 
     def update(self, job: Job, **values: Any) -> None:
         with self._lock:

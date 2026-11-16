@@ -61,6 +61,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .form-grid label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
 .form-grid input { width: 100%; }
+.section-head { margin-top: 14px; }
+.section-head h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .checkbox { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .checkbox input { width: auto; }
 .wide { grid-column: 1 / -1; }

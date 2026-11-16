@@ -133,6 +133,8 @@ systemd-run 启动独立 transient unit
 /slots IN USE guard
 停止模型
 切换模型
+重启模型
+保存 / 删除 launch profile
 job 持久化
 audit 记录
 ```
@@ -143,6 +145,8 @@ audit 记录
 Qwen3.5-0.8B 启动 / 停止
 Qwen3.6-35B-A3B 启动 / 停止
 Qwen3.5-0.8B → Qwen3.6-35B-A3B 切换
+Qwen3.5-0.8B 重启
+benchmark_greedy profile 保存与启动
 Manager 重启不影响运行中的 llama-server
 Manager 重启后 job 状态可恢复
 ```
@@ -176,7 +180,9 @@ active job 状态
 启动模型
 停止模型
 切换模型
+重启模型
 启动参数配置：context / batch / ubatch / cache_ram / ctxcp / MTP / port
+采样参数配置：temperature / top-k / top-p / min-p / repeat / presence / frequency
 job 列表
 job 日志查看
 audit 记录查看

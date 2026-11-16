@@ -56,6 +56,48 @@ def test_confirm_draft_manifest_without_touching_model_directory(model_root: Pat
         assert not (package / "model.json").exists()
 
 
+def test_profile_save_and_delete(model_root: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        payload = {
+            "context": 4096,
+            "batch": 4096,
+            "ubatch": 4096,
+            "cache_ram": 0,
+            "ctxcp": 0,
+            "mtp": False,
+            "reasoning": "off",
+            "sampling": {
+                "temperature": 0,
+                "top_k": 0,
+                "top_p": 1.0,
+                "min_p": 0,
+                "repeat_last_n": 0,
+                "repeat_penalty": 1.0,
+                "presence_penalty": 0,
+                "frequency_penalty": 0,
+            },
+        }
+        saved = client.put(
+            "/api/v1/models/fixture-model/profiles/benchmark_greedy",
+            json=payload,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["manifest_source"] == "user"
+
+        manifest = client.get("/api/v1/models/fixture-model/manifest").json()["manifest"]
+        assert manifest["profiles"]["benchmark_greedy"] == payload
+
+        assert client.delete(
+            "/api/v1/models/fixture-model/profiles/benchmark_greedy"
+        ).status_code == 200
+        assert "benchmark_greedy" not in client.get(
+            "/api/v1/models/fixture-model/manifest"
+        ).json()["manifest"]["profiles"]
+        assert client.delete(
+            "/api/v1/models/fixture-model/profiles/default"
+        ).status_code == 400
+
+
 def test_start_and_stop_fake_model(model_root: Path, tmp_path: Path) -> None:
     with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
         started = client.post(
@@ -159,3 +201,30 @@ def test_switch_stops_current_and_starts_target(model_root: Path, tmp_path: Path
         client.post("/api/v1/models/second-model/stop", json={"timeout_seconds": 2})
         wait_for_state(client, second_jobs[0]["job_id"], "stopped")
         wait_for_state(client, switch_job["job_id"], "stopped")
+
+
+def test_restart_stops_and_starts_same_model(model_root: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        initial = client.post("/api/v1/models/fixture-model/start", json={}).json()["job"]
+        wait_for_state(client, initial["job_id"], "running")
+
+        response = client.post(
+            "/api/v1/models/fixture-model/restart",
+            json={"context": 4096, "stop_timeout_seconds": 2},
+        )
+        assert response.status_code == 200
+        restart_job = response.json()["job"]
+        assert restart_job["action"] == "restart"
+        wait_for_state(client, restart_job["job_id"], "running", timeout=15.0)
+        wait_for_state(client, initial["job_id"], "stopped")
+
+        starts = [
+            job for job in client.get("/api/v1/jobs").json()["jobs"]
+            if job["model"] == "fixture-model" and job["action"] == "start"
+        ]
+        assert len(starts) == 2
+        assert starts[0]["state"] == "running"
+
+        client.post("/api/v1/models/fixture-model/stop", json={"timeout_seconds": 2})
+        wait_for_state(client, starts[0]["job_id"], "stopped")
+        wait_for_state(client, restart_job["job_id"], "stopped")

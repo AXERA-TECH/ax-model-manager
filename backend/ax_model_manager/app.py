@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .config import Settings, load_settings
 from .jobs import Job, JobStore
+from .manifest import is_safe_id, validate_manifest
 from .process import (
     FakeSubprocessManager,
     ProcessSpec,
@@ -24,6 +25,17 @@ from .process import (
     SystemdRunManager,
 )
 from .scanner import ModelRootError, scan_models, summary
+
+
+class SamplingInput(BaseModel):
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_k: int | None = Field(default=None, ge=0, le=1_000_000)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    min_p: float | None = Field(default=None, ge=0, le=1)
+    repeat_last_n: int | None = Field(default=None, ge=0, le=1_000_000)
+    repeat_penalty: float | None = Field(default=None, ge=0, le=10)
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
 
 
 class StartRequest(BaseModel):
@@ -37,6 +49,7 @@ class StartRequest(BaseModel):
     cache_ram: int | None = Field(default=None, ge=0, le=1_000_000)
     ctxcp: int | None = Field(default=None, ge=0, le=128)
     mtp: bool | None = None
+    sampling: SamplingInput | None = None
 
 
 class StopRequest(BaseModel):
@@ -48,6 +61,24 @@ class StopRequest(BaseModel):
 
 class SwitchRequest(StartRequest):
     stop_timeout_seconds: int = Field(default=15, ge=1, le=600)
+
+
+class RestartRequest(StartRequest):
+    stop_timeout_seconds: int = Field(default=15, ge=1, le=600)
+
+
+class ProfileInput(BaseModel):
+    context: int | None = Field(default=None, ge=1024, le=100_000_000)
+    batch: int | None = Field(default=None, ge=1, le=1_000_000)
+    ubatch: int | None = Field(default=None, ge=1, le=1_000_000)
+    cache_ram: int | None = Field(default=None, ge=0, le=1_000_000)
+    ctxcp: int | None = Field(default=None, ge=0, le=128)
+    mtp: bool | None = None
+    reasoning: str | None = Field(default=None, pattern="^(off|low|medium|high)$")
+    image_max_tokens: int | None = Field(default=None, ge=0, le=100_000)
+    port: int | None = Field(default=None, ge=1, le=65_535)
+    startup_timeout_seconds: int | None = Field(default=None, ge=1, le=86_400)
+    sampling: SamplingInput | None = None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -203,6 +234,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "path": str(override_path),
         }
 
+    def write_user_manifest(record: dict[str, Any], manifest: dict[str, Any], request: Request, action: str) -> dict[str, Any]:
+        model_dir = Path(record["directory"])
+        result = validate_manifest(manifest, model_dir)
+        if not result.valid:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "invalid manifest", "errors": result.errors},
+            )
+        override_dir = Path(app.state.settings.data_dir) / "models"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        override_path = override_dir / f"{record['relative_directory']}.json"
+        override_path.write_text(
+            json.dumps(result.manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        updated = find_model(str(record["id"]))
+        audit(request, action, model=record["id"], profile_path=str(override_path))
+        return {
+            "model": updated["id"],
+            "manifest_source": updated["manifest_source"],
+            "ready_to_start": updated["ready_to_start"],
+            "profiles": list(updated["manifest"].get("profiles", {}).keys()),
+            "path": str(override_path),
+        }
+
+    @app.put(
+        "/api/v1/models/{model_id}/profiles/{profile_id}",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def save_profile(
+        model_id: str,
+        profile_id: str,
+        body: ProfileInput,
+        request: Request,
+    ) -> dict[str, Any]:
+        if not is_safe_id(profile_id):
+            raise HTTPException(status_code=400, detail="invalid profile name")
+        record = find_model(model_id)
+        manifest = json.loads(json.dumps(record["manifest"], ensure_ascii=False))
+        profiles = manifest.setdefault("profiles", {})
+        clean = body.model_dump(exclude_none=True)
+        if "sampling" in clean and clean["sampling"] is not None:
+            clean["sampling"] = {
+                key: value for key, value in clean["sampling"].items()
+                if value is not None
+            }
+        profiles[profile_id] = clean
+        return write_user_manifest(record, manifest, request, "profile_saved")
+
+    @app.delete(
+        "/api/v1/models/{model_id}/profiles/{profile_id}",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def delete_profile(
+        model_id: str,
+        profile_id: str,
+        request: Request,
+    ) -> dict[str, Any]:
+        if profile_id == "default":
+            raise HTTPException(status_code=400, detail="default profile cannot be deleted")
+        record = find_model(model_id)
+        manifest = json.loads(json.dumps(record["manifest"], ensure_ascii=False))
+        profiles = manifest.setdefault("profiles", {})
+        if profile_id not in profiles:
+            raise HTTPException(status_code=404, detail=f"profile not found: {profile_id}")
+        del profiles[profile_id]
+        return write_user_manifest(record, manifest, request, "profile_deleted")
+
     def audit(request: Request, action: str, **values: Any) -> None:
         path = request.app.state.settings.data_dir / "audit.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,7 +359,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("binary or model artifact is missing")
 
         profile = dict(record["manifest"].get("profiles", {}).get(profile_name, {}))
-        profile.update({key: value for key, value in overrides.items() if value is not None})
+        profile.update({
+            key: value
+            for key, value in overrides.items()
+            if value is not None and key != "sampling"
+        })
+        if overrides.get("sampling") is not None:
+            profile["sampling"] = {
+                **profile.get("sampling", {}),
+                **{
+                    key: value
+                    for key, value in overrides["sampling"].items()
+                    if value is not None
+                },
+            }
         sampling = profile.get("sampling", {})
         argv: list[str] = [
             str(binary),
@@ -518,7 +630,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model_root_ok = False
             model_root_error = str(exc)
         active_jobs = request.app.state.jobs.active()
-        request.app.state.jobs.reconcile_switch_jobs()
+        request.app.state.jobs.reconcile_composite_jobs()
         active_jobs = request.app.state.jobs.active()
         return {
             "version": __version__,
@@ -578,7 +690,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             request.app.state.jobs.update(runtime, state="stopped", exit_code=exit_code)
             request.app.state.jobs.update(stop_job, state="stopped", exit_code=exit_code)
-            request.app.state.jobs.reconcile_switch_jobs()
+            request.app.state.jobs.reconcile_composite_jobs()
             audit(
                 request,
                 "stop_completed",
@@ -589,6 +701,104 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         threading.Thread(target=stop_worker, daemon=True).start()
         return {"job": stop_job.public(), "runtime_job": runtime.public()}
+
+    @app.post(
+        "/api/v1/models/{model_id}/restart",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def restart_model(model_id: str, body: RestartRequest, request: Request) -> dict[str, Any]:
+        record = find_model(model_id)
+        profiles = record["manifest"].get("profiles", {})
+        if not record["ready_to_start"]:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "model is not ready", "errors": record["errors"]},
+            )
+        if body.profile not in profiles:
+            raise HTTPException(status_code=400, detail=f"profile not found: {body.profile}")
+
+        runtime = request.app.state.jobs.active_for_model(model_id)
+        if not runtime:
+            raise HTTPException(status_code=409, detail=f"no running model: {model_id}")
+
+        busy = False
+        if runtime.state == "running" and runtime.port:
+            try:
+                slots = get_runtime_json(runtime.port, "/slots")
+                busy = any(slot.get("is_processing") for slot in slots if isinstance(slot, dict))
+            except Exception:
+                busy = True
+        if busy and not body.force:
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "model_in_use", "message": "slot is processing"},
+            )
+
+        restart_job = request.app.state.jobs.create("restart", model_id, "stopping")
+        audit(
+            request,
+            "restart_requested",
+            model=model_id,
+            job=restart_job.id,
+            runtime_job=runtime.id,
+            force=body.force,
+        )
+
+        def restart_worker() -> None:
+            jobs = request.app.state.jobs
+            try:
+                jobs.update(runtime, state="stopping")
+                exit_code = request.app.state.process_manager.stop(
+                    RuntimeHandle(runtime_id=runtime.runtime_id or "", pid=runtime.pid),
+                    timeout=float(body.stop_timeout_seconds),
+                )
+                jobs.update(runtime, state="stopped", exit_code=exit_code)
+                jobs.update(restart_job, state="starting")
+
+                start_job = begin_start(
+                    request,
+                    record,
+                    body,
+                    ignore_job_ids={restart_job.id},
+                )
+                deadline = time.monotonic() + 900.0
+                while time.monotonic() < deadline:
+                    current = jobs.get(start_job.id)
+                    if not current:
+                        raise RuntimeError("start job disappeared")
+                    if current.state == "running":
+                        jobs.update(
+                            restart_job,
+                            state="running",
+                            port=current.port,
+                            runtime_id=current.runtime_id,
+                        )
+                        audit(
+                            request,
+                            "restart_completed",
+                            model=model_id,
+                            job=restart_job.id,
+                            start_job=start_job.id,
+                        )
+                        return
+                    if current.state == "failed":
+                        jobs.update(restart_job, state="failed", error=current.error)
+                        audit(
+                            request,
+                            "restart_failed",
+                            model=model_id,
+                            job=restart_job.id,
+                            error=current.error,
+                        )
+                        return
+                    time.sleep(0.1)
+                jobs.update(restart_job, state="failed", error="restart timeout")
+            except Exception as exc:
+                jobs.update(restart_job, state="failed", error=str(exc))
+                audit(request, "restart_failed", model=model_id, job=restart_job.id, error=str(exc))
+
+        threading.Thread(target=restart_worker, daemon=True).start()
+        return {"job": restart_job.public(), "runtime_job": runtime.public()}
 
     @app.post(
         "/api/v1/models/{model_id}/switch-to",
