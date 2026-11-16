@@ -184,7 +184,7 @@ active job 状态
 启动参数配置：context / batch / ubatch / cache_ram / ctxcp / MTP / port
 采样参数配置：temperature / top-k / top-p / min-p / repeat / presence / frequency
 job 列表
-job 日志查看
+job 日志查看，默认每秒自动刷新并跟随尾部
 audit 记录查看
 OpenAI-compatible API 信息展示
 ```

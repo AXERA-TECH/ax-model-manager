@@ -110,7 +110,18 @@
   <dialog id="log-dialog">
     <div class="dialog-head">
       <h3 id="log-title">Job log</h3>
-      <div><button id="reload-log">Reload</button><button id="close-log">Close</button></div>
+      <div class="dialog-controls">
+        <label class="checkbox">
+          <input id="auto-log" type="checkbox" checked>
+          Auto refresh
+        </label>
+        <label class="checkbox">
+          <input id="follow-log" type="checkbox" checked>
+          Follow tail
+        </label>
+        <button id="reload-log">Reload</button>
+        <button id="close-log">Close</button>
+      </div>
     </div>
     <pre id="log-content"></pre>
   </dialog>

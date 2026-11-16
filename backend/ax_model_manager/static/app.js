@@ -4,6 +4,8 @@ const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 let timer = null;
 let currentLogJob = null;
+let logTimer = null;
+let logLoading = false;
 let controlEnabled = false;
 let modelRows = [];
 
@@ -449,17 +451,36 @@ async function openLog(jobId) {
   currentLogJob = jobId;
   $('log-title').textContent = `Job ${jobId}`;
   $('log-dialog').showModal();
-  await loadLog();
+  await loadLog({ force: true, follow: true });
+  startLogPolling();
 }
 
-async function loadLog() {
-  if (!currentLogJob) return;
+async function loadLog({ force = false, follow = null } = {}) {
+  if (!currentLogJob || (logLoading && !force)) return;
+  const content = $('log-content');
+  const nearBottom = content.scrollTop + content.clientHeight >= content.scrollHeight - 32;
+  const shouldFollow = follow ?? ($('follow-log')?.checked && nearBottom);
+  logLoading = true;
   try {
     const result = await api(`/api/v1/jobs/${currentLogJob}/logs?lines=400`);
-    $('log-content').textContent = result.lines.join('\n') || '(empty log)';
+    content.textContent = result.lines.join('\n') || '(empty log)';
+    if (shouldFollow) content.scrollTop = content.scrollHeight;
   } catch (error) {
-    $('log-content').textContent = error.message;
+    content.textContent = error.message;
+  } finally {
+    logLoading = false;
   }
+}
+
+function stopLogPolling() {
+  if (logTimer) clearInterval(logTimer);
+  logTimer = null;
+}
+
+function startLogPolling() {
+  stopLogPolling();
+  if (!$('auto-log')?.checked) return;
+  logTimer = setInterval(() => loadLog(), 1000);
 }
 
 function scheduleRefresh() {
@@ -473,8 +494,10 @@ $('connect').onclick = () => {
 };
 $('refresh').onclick = refresh;
 $('show-invalid').onchange = () => renderModels(modelRows);
-$('reload-log').onclick = loadLog;
+$('reload-log').onclick = () => loadLog({ force: true, follow: Boolean($('follow-log')?.checked) });
 $('close-log').onclick = () => $('log-dialog').close();
+$('auto-log').onchange = startLogPolling;
+$('log-dialog').addEventListener('close', stopLogPolling);
 tokenInput.addEventListener('keydown', event => { if (event.key === 'Enter') $('connect').click(); });
 
 refresh();

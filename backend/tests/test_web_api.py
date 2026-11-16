@@ -70,5 +70,7 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert index.status_code == 200
         assert "AXERA Model Manager" in index.text
         assert "OpenAI-compatible API" in index.text
+        assert 'id="auto-log"' in index.text
+        assert 'id="follow-log"' in index.text
         assert client.get("/ui/app.js").status_code == 200
         assert client.get("/ui/../config.py").status_code == 404
