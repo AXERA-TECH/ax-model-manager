@@ -46,16 +46,6 @@
         <span>Active jobs</span>
         <strong id="metric-active">—</strong>
       </article>
-      <article class="metric">
-        <span>OS memory</span>
-        <strong id="metric-os-memory">—</strong>
-        <small id="metric-os-available" class="metric-detail">—</small>
-      </article>
-      <article class="metric">
-        <span>CMM</span>
-        <strong id="metric-cmm">—</strong>
-        <small id="metric-cmm-available" class="metric-detail">—</small>
-      </article>
       <article class="metric metric-editor">
         <span>Model limit</span>
         <div class="limit-row">
@@ -81,14 +71,17 @@
       <div class="panel-head">
         <div>
           <h2>Device Status</h2>
-          <p class="panel-subtitle">Refreshed automatically from tempmon</p>
+          <p class="panel-subtitle">Key board resources · advanced details collapsed</p>
         </div>
         <span id="device-status" class="pill">Unavailable</span>
       </div>
-      <div id="device-identity" class="metadata"></div>
-      <div id="device-grid" class="device-grid">
-        <p class="message">tempmon is unavailable on this board.</p>
-      </div>
+      <div id="device-identity" class="metadata device-summary"></div>
+      <details id="device-details" class="device-details">
+        <summary>Show advanced device metrics</summary>
+        <div id="device-grid" class="device-grid">
+          <p class="message">tempmon is unavailable on this board.</p>
+        </div>
+      </details>
     </section>
 
     <section class="panel api-panel" id="active-api-panel">

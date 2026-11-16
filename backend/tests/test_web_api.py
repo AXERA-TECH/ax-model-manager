@@ -76,7 +76,9 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert "AXERA Model Manager" in index.text
         assert "OpenAI-compatible API" in index.text
         assert 'id="theme-toggle"' in index.text
-        assert 'id="metric-os-memory"' in index.text
+        assert 'id="device-details"' in index.text
+        assert 'id="metric-os-memory"' not in index.text
+        assert 'id="metric-cmm"' not in index.text
         assert 'id="device-grid"' in index.text
         assert 'id="device-status"' in index.text
         assert 'id="max-running-models"' in index.text
