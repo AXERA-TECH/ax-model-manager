@@ -1,85 +1,78 @@
 # AXERA Model Manager
 
-AX8860 板端模型管理平台，用于管理 `/mnt/models` 下的模型目录，并提供模型发现、配置、启动、停止、切换、日志与状态观测能力。
+AX8860 单板模型管理平台，用来管理 `/mnt/models` 下的 llama.cpp 模型包，
+并提供模型发现、参数配置、启动停止、日志、审计和板卡状态观测。
 
-## 当前定位
+## 定位
 
 ```text
-Model Manager: 面向运维 / 用户的模型管理平台
+Model Manager: 面向运维 / 用户的单板模型管理平台
 LiteWebUI:     面向用户的聊天与轻量诊断前端
 tempmon:       只读设备监控 agent
 ```
 
+Model Manager 只做管理平面；推理流量继续由 llama-server 的
+OpenAI-compatible API 直接承载。
+
 ## 核心原则
 
-1. 模型目录默认为 `/mnt/models`，每个模型一个目录，路径可由用户配置。
+1. 默认模型根目录为 `/mnt/models`，每个模型一个目录，路径可配置。
 2. Web 前端不直接执行 shell，不直接 SSH。
 3. 启动参数必须是结构化 profile，不允许提交任意命令。
-4. llama-server 由 systemd / process manager 托管，Manager 重启不影响推理服务。
-5. 停止与切换前必须执行 IN USE guard。
-6. 所有控制动作写审计日志。
-7. tempmon 保持只读，不承担控制功能。
+4. llama-server 由 systemd transient unit 托管，Manager 重启不影响推理。
+5. 停止、重启和切换前执行 `/slots` IN USE guard。
+6. 控制动作写入 audit。
+7. tempmon 保持只读。
 
-## 端口规划
+## 端口
 
 | 服务 | 默认端口 | 说明 |
 |---|---:|---|
-| tempmon | 8080 | 板端只读监控 |
-| llama-server | 18080-18089 | 推理服务端口池 |
-| model-manager | 18090 | 板端管理 API |
-| central console | 18091 | 多板管理端，可选 |
+| tempmon | 8080 | 只读设备监控 |
+| llama-server | 18080-18089 | 推理端口池 |
+| model-manager | 18090 | 管理 API 与 Web Admin UI |
 
-## 目录
+## 当前功能
 
-```text
-ax-model-manager/
-  backend/
-    ax_model_manager/
-    tests/
-  scripts/
-  docs/
-    开发测试记录-20261116.md
-```
+### 模型发现与校验
 
-## 当前实现状态
+- 扫描模型目录，识别 `llama-server` / `llama-tts`
+- 读取和校验 `model.json`
+- 无 manifest 时生成 inferred draft，用户确认后保存在 Manager 数据目录
+- 校验 binary、GGUF、mmproj、chat template、kernels
+- 路径穿越和 symlink escape 防护
 
-已完成 **Phase 0 / Phase 1 本机只读 MVP**：
+### 生命周期管理
 
-- FastAPI 只读后端
-- 配置文件与环境变量加载
-- 模型根目录扫描
-- `model.json` 读取与校验
-- 无 manifest 时生成 inferred draft
-- GGUF / mmproj / chat template / kernels / llama-server 完整性检查
-- 路径穿越与 symlink escape 防护
-- 可选 Bearer Token 认证
-- 本地 fixture 模型生成脚本
-- 25 个单元 / API 测试
+- start / stop / restart / switch
+- 多模型并行，端口池自动分配
+- model limit 达到后可由用户确认 force start
+- systemd-run 启动 `ax-model-*` transient unit
+- job 状态持久化，Manager 重启后恢复
+- 孤儿 runtime 扫描、Adopt、Stop
+- 启动前 CMM / OS memory / NPU 温度阈值检查
 
-同时完成了 **Phase 2 的本机 fake 生命周期原型**：
+### Profile
 
-- JobStore 与异步任务状态
-- fake-subprocess 进程后端
-- `start` / `stop` 控制端点
-- `18080-18089` 端口自动分配
-- `/health` ready 轮询
-- `/slots` IN USE guard
-- force stop
-- audit JSONL 记录
-- fake llama-server，用于完全本机测试
+- 保存、删除、复制、重置、Diff
+- 启动命令 Preview
+- Context 档位固定为 16K / 32K / 64K / 128K / 256K
+- 支持 batch、ubatch、cache_ram、ctxcp、MTP、端口和采样参数
 
-尚未实现：
+### Web Admin UI
 
-- systemd 进程托管
-- 重启 / 切换
-- Web Admin UI
-- 多板 Central Console
-- 模型下载与更新
+- Dashboard 与紧凑 Device Status
+- OS memory、CMM、NPU 温度、CPU、网络、磁盘、llama 进程观测
+- 模型卡片与详情
+- 每个模型卡片内打开启动参数配置
+- Jobs、日志尾部跟随、错误高亮、下载
+- Audit 固定高度滚动显示
+- 明暗主题
+- 运行时展示 OpenAI Base URL、Chat endpoint、model ID 和 curl 示例
 
-## 本地运行，不需要板子
+## 本地开发
 
 ```bash
-cd <repository-directory>
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements-dev.txt
 .venv/bin/pip install -e backend
@@ -88,154 +81,85 @@ python3 -m venv .venv
 ./scripts/dev_server.sh
 ```
 
-默认本地地址：
+默认地址：<http://127.0.0.1:18090>。开发 token 为 `local-dev-token`。
 
-```text
-http://127.0.0.1:18090
-```
-
-开发 token：
-
-```text
-local-dev-token
-```
-
-如果本机 `18090` 被占用：
+如果端口被占用：
 
 ```bash
 AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 ```
 
-FastAPI 仍然只负责管理平面；聊天推理继续由 llama-server 的 OpenAI-compatible API 提供。
+## 板端安装
 
-当前 `fake-subprocess` 后端只用于本机测试，不是生产进程管理方案。
+以下命令在板端的源码目录中以 root 执行：
+
+```bash
+# 首次安装；已有 config 和 token 会保留
+./scripts/install.sh \
+  --model-root /mnt/models \
+  --data-dir /var/lib/axera-model-manager
+
+# 升级；只停止 Manager，不停止已经运行的 ax-model-* 推理服务
+./scripts/upgrade.sh
+
+# 查看与恢复升级备份
+./scripts/rollback.sh --list
+./scripts/rollback.sh
+
+# 卸载；默认保留 config、数据、日志和推理 runtime
+./scripts/uninstall.sh
+
+# 确认没有推理任务后，停止 runtime 或清理状态
+./scripts/uninstall.sh --stop-runtimes
+./scripts/uninstall.sh --stop-runtimes --purge
+```
+
+安装位置：
+
+```text
+/opt/axera-model-manager
+/etc/axera/model-manager/config.json
+/var/lib/axera-model-manager
+```
+
+systemd 服务：
+
+```text
+axera-model-manager.service
+axera-model-manager-rotate.timer
+axera-model-manager-rotate.service
+ax-model-*.service                  # 模型 transient unit
+```
+
+板端镜像可能没有 `logrotate`。因此安装了兼容 logrotate 配置，同时内置
+每小时执行的 copytruncate 旋转 timer：单个 job log 超过 50 MiB 时压缩，
+默认保留 14 个压缩文件。
+
+## 打包与回归
+
+```bash
+./scripts/package.sh
+
+AX_MODEL_MANAGER_TOKEN="$TOKEN" \
+  ./scripts/regression.sh http://<board-ip>:18090
+```
+
+release 包不包含 `.git`、`.venv`、`dist`、`.secrets` 和本地 fixture。
 
 ## 上海板部署状态
-
-2026-11-16 已在上海板上部署验证：
 
 ```text
 Model Manager API: http://<board-ip>:18090
 部署路径: /opt/axera-model-manager
 配置: /etc/axera/model-manager/config.json
 状态数据: /var/lib/axera-model-manager
-systemd: axera-model-manager.service
 ```
 
-当前能力：
+访问控制 API 需要 Bearer token。token 在部署时生成，不写入 Git 仓库。
 
-```text
-扫描 /mnt/models 下 13 个模型目录
-识别 llama-server / llama-tts
-manifest draft 确认
-systemd-run 启动独立 transient unit
-/health ready 检测
-/slots IN USE guard
-停止模型
-切换模型
-重启模型
-多模型并行，自动分配不同端口
-达到模型数量限制后可由用户强制越过
-保存 / 删除 launch profile
-job 持久化
-audit 记录
-```
+## 暂缓项
 
-已验证：
-
-```text
-Qwen3.5-0.8B 启动 / 停止
-Qwen3.6-35B-A3B 启动 / 停止
-Qwen3.5-0.8B → Qwen3.6-35B-A3B 切换
-Qwen3.5-0.8B 重启
-Qwen3.5-0.8B + Qwen3-ASR-1.7B 双模型并行
-benchmark_greedy profile 保存与启动
-Manager 重启不影响运行中的 llama-server
-Manager 重启后 job 状态可恢复
-孤儿 llama-server runtime 检测 / 接管 / 停止
-启动前 CMM、OS memory、NPU 温度阈值检查
-启动命令预览
-Profile 复制 / 重置 / Diff
-模型详情与最近任务诊断
-日志过滤、错误行高亮和下载
-```
-
-访问 API 需要部署时生成的 Bearer token。本机不把 token 写入 Git 仓库，密钥文件位于：
-
-```text
-<repository-directory>/.secrets/shanghai.token
-```
-
-## Web Admin UI
-
-上海板已部署内置 Web 管理界面：
-
-```text
-http://<board-ip>:18090/
-```
-
-打开页面后在右上角输入 Bearer token 并点击 **Connect**。
-
-当前页面支持：
-
-```text
-Dashboard 概览
-Dashboard 显示 OS memory / CMM / model limit
-Device Status 面板以紧凑摘要显示关键板卡状态，详细指标默认折叠
-Model limit 可在 Dashboard 顶部选择并保存
-模型列表
-valid / invalid 状态
-manifest 来源
-模型大小与能力
-active job 状态
-确认 inferred manifest
-启动模型
-停止模型
-切换模型
-重启模型
-在模型卡片内打开启动参数配置
-Context 固定提供 16K / 32K / 64K / 128K / 256K 档位
-启动参数：context 档位 / batch / ubatch / cache_ram / ctxcp / MTP / port
-采样参数：temperature / top-k / top-p / min-p / repeat / presence / frequency
-白天 / 黑夜主题切换
-job 列表
-job 日志查看，默认每秒自动刷新并跟随尾部
-audit 记录查看
-audit 固定高度滚动显示
-Models 卡片区固定高度滚动显示
-OpenAI-compatible API 信息展示
-```
-
-Device Status 面板包括：
-
-```text
-tempmon 在线状态
-CMM
-OS memory
-NPU 最高温度
-CPU 1 分钟负载
-网络 RX/TX
-llama-server 进程数
-```
-
-展开 **Show advanced device metrics** 后才显示 agent/BSP/chip、CPU 频率、
-thermal zones、NPU clocks 和磁盘详情。
-
-控制按钮只在 `enable_control=true` 时显示。只读部署仍可查看模型、job 与 audit。
-
-模型运行后，页面顶部的 **OpenAI-compatible API** 区域会显示：
-
-```text
-OpenAI Base URL
-Chat Completions endpoint
-运行中模型实际广告的 model ID
-可直接复制的 curl 请求
-```
-
-例如：
-
-```text
-Base URL: http://<board-ip>:18080/v1
-Chat:     http://<board-ip>:18080/v1/chat/completions
-Model ID: /mnt/models/Qwen3.5-0.8B-AX8860-llama.cpp/qwen3.5-0.8b-q8_0.gguf
-```
+- 安全 / 权限体系：当前处于调试和客户送测阶段，先保持简单 token 认证
+- 资源准入策略：只保留启动前阈值检查和用户确认 force start
+- 多板 Central Console：当前产品定位为单机，不开发
+- 模型下载 / 更新：优先级提高，计划支持直接输入 Hugging Face repo 地址并做差异化更新

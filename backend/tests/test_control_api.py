@@ -49,6 +49,7 @@ def test_update_config_persists_model_limit(model_root: Path, tmp_path: Path) ->
 
         config_path = tmp_path / "manager-config.json"
         assert json.loads(config_path.read_text(encoding="utf-8"))["max_running_models"] == 2
+        assert config_path.stat().st_mode & 0o777 == 0o600
         assert client.get("/api/v1/dashboard").json()["configured_model_limit"] == 2
 
 

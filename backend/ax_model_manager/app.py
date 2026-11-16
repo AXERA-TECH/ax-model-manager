@@ -269,6 +269,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 json.dumps(values, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+            # The config contains the bearer token and is replaced through a
+            # sibling temporary file. Keep it private even on installations
+            # that were originally created with a permissive umask.
+            os.chmod(temporary, 0o600)
             os.replace(temporary, config_path)
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=503, detail=f"cannot save config: {exc}") from exc

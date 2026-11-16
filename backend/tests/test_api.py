@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ax_model_manager import __version__
 from ax_model_manager.app import create_app
 from ax_model_manager.config import Settings
 
@@ -20,7 +21,7 @@ def test_health_is_public(model_root: Path) -> None:
         assert response.status_code == 200
         assert response.json() == {
             "status": "ok",
-            "version": "0.1.0",
+            "version": __version__,
             "mode": "read-only",
         }
 
