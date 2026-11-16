@@ -24,6 +24,9 @@ def test_dashboard_reports_models_and_config(model_root: Path, tmp_path: Path) -
         assert payload["active_job_count"] == 0
         assert payload["configured_model_limit"] == 1
         assert payload["resources"]["available"] is False
+        assert payload["resources"]["thermal_zones"] == []
+        assert payload["resources"]["disks"] == []
+        assert payload["resources"]["llama"] is None
         assert payload["config"]["read_only"] is True
 
 
@@ -74,6 +77,8 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert "OpenAI-compatible API" in index.text
         assert 'id="theme-toggle"' in index.text
         assert 'id="metric-os-memory"' in index.text
+        assert 'id="device-grid"' in index.text
+        assert 'id="device-status"' in index.text
         assert 'id="max-running-models"' in index.text
         assert 'id="save-model-limit"' in index.text
         assert "height: var(--model-list-height)" in (

@@ -175,6 +175,7 @@ http://<board-ip>:18090/
 ```text
 Dashboard 概览
 Dashboard 显示 OS memory / CMM / model limit
+Device Status 面板显示 tempmon 采集的完整设备状态
 Model limit 可在 Dashboard 顶部选择并保存
 模型列表
 valid / invalid 状态
@@ -196,6 +197,22 @@ audit 记录查看
 audit 固定高度滚动显示
 Models 卡片区固定高度滚动显示
 OpenAI-compatible API 信息展示
+```
+
+Device Status 面板包括：
+
+```text
+tempmon 在线状态
+agent / BSP / chip 信息
+CPU 1/5/15 分钟负载
+CPU 核数与频率
+CMM used / total / free
+OS memory used / total / available
+NPU 最高温度与各 thermal zone
+NPU TDP 频率与各核 clock
+网络 RX/TX 速率与累计流量
+llama-server 进程数、RSS、监听端口
+磁盘用量与剩余空间
 ```
 
 控制按钮只在 `enable_control=true` 时显示。只读部署仍可查看模型、job 与 audit。

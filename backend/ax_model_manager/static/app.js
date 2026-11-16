@@ -70,6 +70,17 @@ function formatSize(bytes) {
   return `${Math.round(bytes / 1e3)} KB`;
 }
 
+function formatKb(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${(number / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function formatNumber(value, digits = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : '—';
+}
+
 function formatTime(value) {
   if (!value) return '—';
   return new Date(value * 1000).toLocaleString();
@@ -193,6 +204,198 @@ function renderActiveApi(models) {
       apiBox(`Chat request · ${activeModel.name}`, requestNode, [copyButton(curl, 'Copy curl')]),
     );
   }
+}
+
+function deviceCard(title, value, details = [], chips = [], className = '') {
+  const card = document.createElement('article');
+  card.className = `device-card ${className}`.trim();
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  const output = document.createElement('div');
+  output.className = 'device-value';
+  output.textContent = value;
+  card.append(heading, output);
+
+  for (const detail of details.filter(Boolean)) {
+    const element = document.createElement('div');
+    element.className = 'device-detail';
+    element.textContent = detail;
+    card.append(element);
+  }
+
+  if (chips.length) {
+    const container = document.createElement('div');
+    container.className = 'device-chips';
+    for (const [label, title] of chips.filter(Boolean)) {
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = label;
+      if (title) pill.title = title;
+      container.append(pill);
+    }
+    card.append(container);
+  }
+  return card;
+}
+
+function renderDeviceResources(resources = {}) {
+  const status = $('device-status');
+  const identity = $('device-identity');
+  const grid = $('device-grid');
+  identity.replaceChildren();
+  grid.replaceChildren();
+
+  if (!resources.available) {
+    status.className = 'pill failed';
+    status.textContent = 'tempmon unavailable';
+    const message = document.createElement('p');
+    message.className = 'message';
+    message.style.margin = '0';
+    message.textContent = 'Device metrics are unavailable. Check tempmon on port 8080.';
+    grid.append(message);
+    return;
+  }
+
+  status.className = 'pill running';
+  status.textContent = 'tempmon online';
+  const agent = resources.agent || {};
+  for (const value of [
+    agent.version ? `agent ${agent.version}` : '',
+    agent.bsp_version || '',
+    agent.chip_type || '',
+    resources.sampled_at ? `sample ${new Date(resources.sampled_at * 1000).toLocaleTimeString()}` : '',
+  ].filter(Boolean)) {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = value;
+    identity.append(pill);
+  }
+
+  const load = resources.load || {};
+  const cpu = resources.cpu || {};
+  const cmm = resources.cmm || {};
+  const memory = resources.os_memory || {};
+  const npu = resources.npu || {};
+  const net = resources.net || {};
+  const llama = resources.llama || {};
+  const usedMemory = Number(memory.total_kb || 0) - Number(memory.avail_kb || 0);
+  const cmmPercent = cmm.total_kb ? Number(cmm.used_kb || 0) / Number(cmm.total_kb) * 100 : null;
+  const memoryPercent = memory.total_kb ? usedMemory / Number(memory.total_kb) * 100 : null;
+  const maxTemp = Number(resources.npu_max_temp_c);
+  const temperatureClass = maxTemp >= 70 ? ' hot' : maxTemp >= 55 ? ' warn' : '';
+
+  grid.append(
+    deviceCard(
+      'CPU load',
+      `${formatNumber(load['1'])} / ${formatNumber(load['5'])} / ${formatNumber(load['15'])}`,
+      ['1 / 5 / 15 minute averages'],
+      cpu.cores ? [[`${cpu.cores} cores`]] : [],
+    ),
+    deviceCard(
+      'CPU frequency',
+      cpu.frequency_min_mhz === cpu.frequency_max_mhz
+        ? `${formatNumber(cpu.frequency_min_mhz / 1000, 2)} GHz`
+        : `${formatNumber(cpu.frequency_min_mhz / 1000, 2)}–${formatNumber(cpu.frequency_max_mhz / 1000, 2)} GHz`,
+      [`${cpu.frequency_mhz?.length || 0} online cores`],
+    ),
+    deviceCard(
+      'CMM memory',
+      cmm.total_kb ? `${formatKb(cmm.used_kb)} / ${formatKb(cmm.total_kb)}` : '—',
+      [
+        cmm.total_kb ? `free ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
+        cmmPercent == null ? '' : `${cmmPercent.toFixed(1)}% used`,
+      ],
+    ),
+    deviceCard(
+      'OS memory',
+      memory.total_kb ? `${formatKb(usedMemory)} / ${formatKb(memory.total_kb)}` : '—',
+      [
+        memory.avail_kb ? `available ${formatKb(memory.avail_kb)}` : '',
+        memoryPercent == null ? '' : `${memoryPercent.toFixed(1)}% used`,
+      ],
+    ),
+  );
+
+  const temperatureCard = deviceCard(
+    'NPU temperature',
+    Number.isFinite(maxTemp) ? `${formatNumber(maxTemp)} °C` : '—',
+    [Number.isFinite(maxTemp) ? (maxTemp >= 70 ? 'high temperature' : maxTemp >= 55 ? 'warm' : 'normal') : ''],
+    (resources.thermal_zones || []).map(zone => [
+      `${zone.type || zone.name || 'zone'} ${formatNumber(zone.c)}°C`,
+      `${zone.name || ''} ${zone.type || ''}`.trim(),
+    ]),
+    `device-wide${temperatureClass}`,
+  );
+  grid.append(temperatureCard);
+
+  grid.append(
+    deviceCard(
+      'NPU frequency',
+      npu.tdp_freq_mib || npu.tdp_freq_mhz
+        ? `${npu.tdp_freq_mhz || npu.tdp_freq_mib} MHz`
+        : '—',
+      ['TDP current frequency'],
+      (npu.clock_mhz || []).map(value => [`${formatNumber(value, 0)} MHz`]),
+    ),
+    deviceCard(
+      `Network ${net.iface || ''}`.trim(),
+      net.rx_mbps == null && net.tx_mbps == null
+        ? '—'
+        : `↓${formatNumber(net.rx_mbps)} / ↑${formatNumber(net.tx_mbps)} Mbps`,
+      [
+        net.rx_bytes != null ? `RX total ${formatSize(Number(net.rx_bytes) * 1024)}` : '',
+        net.tx_bytes != null ? `TX total ${formatSize(Number(net.tx_bytes) * 1024)}` : '',
+      ],
+    ),
+    deviceCard(
+      'llama-server processes',
+      `${llama.process_count ?? 0} process${Number(llama.process_count) === 1 ? '' : 'es'}`,
+      [
+        llama.rss_kb != null ? `RSS ${formatKb(llama.rss_kb)}` : '',
+        llama.listening_ports?.length ? `ports ${llama.listening_ports.join(', ')}` : 'no managed ports reported',
+      ],
+      (llama.processes || []).map(process => [
+        `PID ${process.pid} · ${formatKb(process.rss_kb)}`,
+      ]),
+    ),
+  );
+
+  const diskCard = document.createElement('article');
+  diskCard.className = 'device-card device-wide';
+  const diskTitle = document.createElement('h3');
+  diskTitle.textContent = 'Disks';
+  const diskValue = document.createElement('div');
+  diskValue.className = 'device-value';
+  diskValue.textContent = `${resources.disks?.length || 0} filesystems`;
+  const bars = document.createElement('div');
+  bars.className = 'device-bars';
+  for (const disk of resources.disks || []) {
+    const row = document.createElement('div');
+    row.className = 'device-bar-row';
+    const label = document.createElement('span');
+    const name = document.createElement('span');
+    name.textContent = disk.mount || disk.fs || 'disk';
+    const usage = document.createElement('b');
+    const percent = disk.total_kb ? Number(disk.used_kb || 0) / Number(disk.total_kb) * 100 : 0;
+    usage.textContent = `${percent.toFixed(1)}% · free ${formatKb(disk.avail_kb)}`;
+    label.append(name, usage);
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('div');
+    fill.className = 'fill';
+    fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    bar.append(fill);
+    row.append(label, bar);
+    bars.append(row);
+  }
+  diskCard.append(diskTitle, diskValue, bars);
+  if (!resources.disks?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'device-detail';
+    empty.textContent = 'No filesystem data reported';
+    diskCard.append(empty);
+  }
+  grid.append(diskCard);
 }
 
 function renderModels(models, config = {}) {
@@ -395,6 +598,7 @@ async function refresh() {
       limitSelect.value = String(dashboard.configured_model_limit || dashboard.config?.max_running_models || 1);
     }
     $('save-model-limit').disabled = !controlEnabled;
+    renderDeviceResources(dashboard.resources || {});
     renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
     renderJobs(jobs.jobs);

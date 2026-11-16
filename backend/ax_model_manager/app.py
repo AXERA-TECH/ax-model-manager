@@ -389,28 +389,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return json.loads(response.read().decode("utf-8"))
 
     def board_resources() -> dict[str, Any]:
-        """Read optional tempmon data for the risk confirmation UI."""
+        """Read the board's optional tempmon payload for the resource panel."""
 
         try:
             data = get_runtime_json(8080, "/api/stats", timeout=0.4)
+            agent = data.get("agent") if isinstance(data.get("agent"), dict) else {}
             temperatures = [
                 float(zone["c"]) for zone in data.get("zones", [])
                 if isinstance(zone, dict) and isinstance(zone.get("c"), (int, float))
             ]
+            cpu_frequencies = [
+                float(value) for value in data.get("cpu_freqs", [])
+                if isinstance(value, (int, float))
+            ]
             return {
                 "available": True,
+                "sampled_at": data.get("time"),
+                "agent": {
+                    "version": agent.get("version"),
+                    "bsp_version": agent.get("bsp_version"),
+                    "chip_type": agent.get("chip_type"),
+                },
+                "load": data.get("load"),
+                "cpu": {
+                    "cores": data.get("cpu_cores"),
+                    "frequency_mhz": cpu_frequencies,
+                    "frequency_min_mhz": min(cpu_frequencies) if cpu_frequencies else None,
+                    "frequency_max_mhz": max(cpu_frequencies) if cpu_frequencies else None,
+                },
                 "cmm": data.get("cmm"),
                 "os_memory": data.get("mem"),
                 "npu": data.get("npu"),
                 "npu_max_temp_c": max(temperatures) if temperatures else None,
+                "thermal_zones": data.get("zones", []),
+                "disks": data.get("disks", []),
+                "net": data.get("net"),
+                "llama": data.get("llama"),
             }
         except Exception:
             return {
                 "available": False,
+                "sampled_at": None,
+                "agent": None,
+                "load": None,
+                "cpu": None,
                 "cmm": None,
                 "os_memory": None,
                 "npu": None,
                 "npu_max_temp_c": None,
+                "thermal_zones": [],
+                "disks": [],
+                "net": None,
+                "llama": None,
             }
 
     def artifact_path(record: dict[str, Any], key: str) -> Path | None:
