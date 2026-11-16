@@ -127,3 +127,35 @@ def test_stop_is_blocked_while_slot_is_processing_and_force_stops(model_root: Pa
         stop_job_id = forced.json()["job"]["job_id"]
         wait_for_state(client, stop_job_id, "stopped")
         wait_for_state(client, job_id, "stopped")
+
+
+def test_switch_stops_current_and_starts_target(model_root: Path, tmp_path: Path) -> None:
+    second = write_model_package(model_root / "second-model")
+    manifest_path = second / "model.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["id"] = "second-model"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        first = client.post("/api/v1/models/fixture-model/start", json={}).json()["job"]
+        wait_for_state(client, first["job_id"], "running")
+
+        switched = client.post(
+            "/api/v1/models/second-model/switch-to",
+            json={"context": 4096, "port": 18080, "stop_timeout_seconds": 3},
+        )
+        assert switched.status_code == 200
+        switch_job = switched.json()["job"]
+        wait_for_state(client, switch_job["job_id"], "running", timeout=10.0)
+        wait_for_state(client, first["job_id"], "stopped")
+
+        second_jobs = [
+            job for job in client.get("/api/v1/jobs").json()["jobs"]
+            if job["model"] == "second-model" and job["action"] == "start"
+        ]
+        assert second_jobs
+        assert second_jobs[0]["state"] == "running"
+
+        client.post("/api/v1/models/second-model/stop", json={"timeout_seconds": 2})
+        wait_for_state(client, second_jobs[0]["job_id"], "stopped")
+        wait_for_state(client, switch_job["job_id"], "stopped")

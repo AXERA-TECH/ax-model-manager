@@ -59,6 +59,18 @@ Interactive API docs:
 http://127.0.0.1:18090/docs
 ```
 
+## Built-in admin UI
+
+The backend serves a dependency-free admin UI:
+
+```text
+http://127.0.0.1:18090/
+```
+
+Enter the configured bearer token in the top-right corner and click
+**Connect**. The UI can discover models, confirm inferred manifests, start and
+stop runtimes, inspect jobs, read logs, and view audit records.
+
 ## Current API
 
 | Method | Path | Description |
@@ -70,14 +82,19 @@ http://127.0.0.1:18090/docs
 | GET | `/api/v1/models/{id}/manifest` | Package or inferred draft manifest |
 | GET | `/api/v1/models/{id}/validate` | Manifest/artifact validation result |
 
-Additional endpoints when `enable_control=true` and
-`process_backend=fake-subprocess`:
+Additional endpoints when `enable_control=true`:
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/models/{id}/start` | Start the fake local runtime |
+| POST | `/api/v1/models/{id}/start` | Start the selected runtime |
 | POST | `/api/v1/models/{id}/stop` | Stop with IN USE guard |
+| POST | `/api/v1/models/{id}/switch-to` | Stop current runtime and start target |
+| POST | `/api/v1/models/{id}/manifest/confirm` | Confirm an inferred manifest |
 | GET | `/api/v1/jobs` | List jobs |
 | GET | `/api/v1/jobs/{job_id}` | Get job state |
+| GET | `/api/v1/jobs/{job_id}/logs` | Read a job log tail |
+| GET | `/api/v1/audit` | Read audit records |
+| GET | `/api/v1/dashboard` | Aggregated dashboard state |
 
-Production systemd integration, restart, and switch are not implemented yet.
+Production systemd start/stop/switch is implemented. Restart is not implemented
+yet.

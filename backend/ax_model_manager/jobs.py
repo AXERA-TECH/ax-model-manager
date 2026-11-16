@@ -107,9 +107,28 @@ class JobStore:
 
     def active_for_model(self, model_id: str) -> Job | None:
         for job in self.active():
-            if job.model_id == model_id and job.state != "stopping":
+            if (
+                job.model_id == model_id
+                and job.action == "start"
+                and job.state != "stopping"
+            ):
                 return job
         return None
+
+    def reconcile_switch_jobs(self) -> None:
+        """Close a switch job after its underlying start runtime has stopped."""
+
+        for switch_job in self.list():
+            if switch_job.action != "switch" or switch_job.state not in ACTIVE_STATES:
+                continue
+            has_runtime = any(
+                job.action == "start"
+                and job.model_id == switch_job.model_id
+                and job.state in ACTIVE_STATES
+                for job in self.list()
+            )
+            if not has_runtime:
+                self.update(switch_job, state="stopped")
 
     def update(self, job: Job, **values: Any) -> None:
         with self._lock:

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AXERA Model Manager</title>
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AXERA Model Manager</h1>
+      <p id="subheader">Connect to a board manager</p>
+    </div>
+    <div class="header-actions">
+      <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
+      <button id="connect" class="primary">Connect</button>
+      <button id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="alert" class="alert hidden"></section>
+
+    <section class="metrics">
+      <article class="metric">
+        <span>Manager</span>
+        <strong id="metric-manager">—</strong>
+      </article>
+      <article class="metric">
+        <span>Models</span>
+        <strong id="metric-models">—</strong>
+      </article>
+      <article class="metric">
+        <span>Valid</span>
+        <strong id="metric-valid">—</strong>
+      </article>
+      <article class="metric">
+        <span>Active jobs</span>
+        <strong id="metric-active">—</strong>
+      </article>
+    </section>
+
+    <section class="layout">
+      <div class="panel models-panel">
+        <div class="panel-head">
+          <h2>Models</h2>
+          <label class="checkbox">
+            <input id="show-invalid" type="checkbox">
+            Show invalid
+          </label>
+        </div>
+        <div id="models" class="cards"></div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <div class="panel-head"><h2>Start options</h2></div>
+          <div class="form-grid">
+            <label>Context<input id="context" type="number" min="1024" step="1024" value="4096"></label>
+            <label>Port<input id="port" type="number" min="18080" max="18089" placeholder="auto"></label>
+            <label>Batch<input id="batch" type="number" min="1" step="256" value="4096"></label>
+            <label>UBatch<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
+            <label>Cache RAM MiB<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
+            <label>Ctxcp<input id="ctxcp" type="number" min="0" max="128" value="0"></label>
+            <label class="checkbox wide"><input id="mtp" type="checkbox"> Enable MTP</label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Jobs</h2></div>
+          <div id="jobs" class="jobs"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Audit</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Action</th><th>Model</th><th>Job</th><th>Detail</th></tr></thead>
+          <tbody id="audit"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <dialog id="log-dialog">
+    <div class="dialog-head">
+      <h3 id="log-title">Job log</h3>
+      <div><button id="reload-log">Reload</button><button id="close-log">Close</button></div>
+    </div>
+    <pre id="log-content"></pre>
+  </dialog>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

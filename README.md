@@ -132,6 +132,7 @@ systemd-run 启动独立 transient unit
 /health ready 检测
 /slots IN USE guard
 停止模型
+切换模型
 job 持久化
 audit 记录
 ```
@@ -141,6 +142,7 @@ audit 记录
 ```text
 Qwen3.5-0.8B 启动 / 停止
 Qwen3.6-35B-A3B 启动 / 停止
+Qwen3.5-0.8B → Qwen3.6-35B-A3B 切换
 Manager 重启不影响运行中的 llama-server
 Manager 重启后 job 状态可恢复
 ```
@@ -150,3 +152,34 @@ Manager 重启后 job 状态可恢复
 ```text
 <repository-directory>/.secrets/shanghai.token
 ```
+
+## Web Admin UI
+
+上海板已部署内置 Web 管理界面：
+
+```text
+http://<board-ip>:18090/
+```
+
+打开页面后在右上角输入 Bearer token 并点击 **Connect**。
+
+当前页面支持：
+
+```text
+Dashboard 概览
+模型列表
+valid / invalid 状态
+manifest 来源
+模型大小与能力
+active job 状态
+确认 inferred manifest
+启动模型
+停止模型
+切换模型
+启动参数配置：context / batch / ubatch / cache_ram / ctxcp / MTP / port
+job 列表
+job 日志查看
+audit 记录查看
+```
+
+控制按钮只在 `enable_control=true` 时显示。只读部署仍可查看模型、job 与 audit。
