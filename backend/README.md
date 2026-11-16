@@ -100,3 +100,6 @@ Additional endpoints when `enable_control=true`:
 | GET | `/api/v1/dashboard` | Aggregated dashboard state |
 
 Production systemd start/stop/switch/restart is implemented.
+Running jobs also retain the model IDs advertised by the runtime's
+`GET /v1/models` endpoint. The admin UI uses this to show the correct
+OpenAI-compatible base URL and request example.

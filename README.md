@@ -186,6 +186,24 @@ active job 状态
 job 列表
 job 日志查看
 audit 记录查看
+OpenAI-compatible API 信息展示
 ```
 
 控制按钮只在 `enable_control=true` 时显示。只读部署仍可查看模型、job 与 audit。
+
+模型运行后，页面顶部的 **OpenAI-compatible API** 区域会显示：
+
+```text
+OpenAI Base URL
+Chat Completions endpoint
+运行中模型实际广告的 model ID
+可直接复制的 curl 请求
+```
+
+例如：
+
+```text
+Base URL: http://<board-ip>:18080/v1
+Chat:     http://<board-ip>:18080/v1/chat/completions
+Model ID: /mnt/models/Qwen3.5-0.8B-AX8860-llama.cpp/qwen3.5-0.8b-q8_0.gguf
+```

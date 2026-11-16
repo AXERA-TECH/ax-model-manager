@@ -21,6 +21,7 @@ class Job:
     port: int | None = None
     pid: int | None = None
     runtime_id: str | None = None
+    runtime_models: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     error: str | None = None
@@ -38,6 +39,7 @@ class Job:
             "port": self.port,
             "pid": self.pid,
             "runtime_id": self.runtime_id,
+            "runtime_models": list(self.runtime_models),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "error": self.error,

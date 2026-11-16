@@ -480,10 +480,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 try:
                     health = get_runtime_json(job.port, "/health", timeout=0.2)
                     if health.get("status") == "ok":
+                        try:
+                            model_list = get_runtime_json(job.port, "/v1/models")
+                            advertised_models = [
+                                str(item.get("id"))
+                                for item in model_list.get("data", [])
+                                if isinstance(item, dict) and item.get("id")
+                            ]
+                        except Exception:
+                            advertised_models = []
                         jobs.update(
                             job,
                             state="running",
                             runtime_endpoint=f"http://127.0.0.1:{job.port}",
+                            runtime_models=advertised_models,
                         )
                         jobs.event(job, "runtime_ready", port=job.port)
                         return

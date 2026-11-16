@@ -69,6 +69,113 @@ function errorText(detail) {
   return JSON.stringify(detail);
 }
 
+function publicRuntimeOrigin(port) {
+  const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
+  return `${protocol}//${location.hostname}:${port}`;
+}
+
+async function copyText(text, button) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = button.textContent;
+    button.textContent = 'Copied';
+    setTimeout(() => { button.textContent = original; }, 1200);
+  } catch (_) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+    const original = button.textContent;
+    button.textContent = 'Copied';
+    setTimeout(() => { button.textContent = original; }, 1200);
+  }
+}
+
+function copyButton(text, label = 'Copy') {
+  const button = document.createElement('button');
+  button.className = 'small';
+  button.textContent = label;
+  button.onclick = () => copyText(text, button);
+  return button;
+}
+
+function apiBox(title, node, actions = []) {
+  const box = document.createElement('div');
+  box.className = 'api-box';
+  const caption = document.createElement('span');
+  caption.textContent = title;
+  box.append(caption, node);
+  if (actions.length) {
+    const row = document.createElement('div');
+    row.className = 'api-actions';
+    row.append(...actions);
+    box.append(row);
+  }
+  return box;
+}
+
+function renderActiveApi(models) {
+  const container = $('active-api');
+  const statePill = $('api-state');
+  container.replaceChildren();
+
+  const activeModel = models.find(model => model.active_job);
+  const active = activeModel?.active_job;
+  if (!active?.port) {
+    statePill.className = 'pill';
+    statePill.textContent = 'No model running';
+    const message = document.createElement('p');
+    message.className = 'message';
+    message.style.margin = '0';
+    message.textContent = 'Start a model to see its OpenAI-compatible API base URL, model ID, and request example.';
+    container.append(message);
+    return;
+  }
+
+  const state = active.state || 'unknown';
+  statePill.className = `pill ${stateClass(state)}`;
+  statePill.textContent = `${activeModel.name} · ${state}`;
+
+  const base = `${publicRuntimeOrigin(active.port)}/v1`;
+  const chatUrl = `${base}/chat/completions`;
+  const modelId = active.runtime_models?.[0] || activeModel.id;
+  const curl = [
+    `curl ${chatUrl} \\`,
+    `  -H 'Content-Type: application/json' \\`,
+    `  --data-binary '{"model":"${modelId}","messages":[{"role":"user","content":"Hello"}]}'`,
+  ].join('\n');
+
+  const baseUrlNode = document.createElement('div');
+  const baseLink = document.createElement('a');
+  baseLink.href = base;
+  baseLink.target = '_blank';
+  baseLink.rel = 'noopener';
+  baseLink.textContent = base;
+  baseUrlNode.append(baseLink);
+
+  const modelNode = document.createElement('code');
+  modelNode.textContent = modelId;
+  modelNode.title = active.runtime_models?.length
+    ? active.runtime_models.join('\n')
+    : 'Advertised model ID will be refreshed after the runtime becomes ready';
+
+  const requestNode = document.createElement('pre');
+  requestNode.textContent = curl;
+
+  container.append(
+    apiBox('OpenAI base URL', baseUrlNode, [
+      copyButton(base, 'Copy base URL'),
+      copyButton(chatUrl, 'Copy chat URL'),
+    ]),
+    apiBox('Model ID', modelNode, [copyButton(modelId, 'Copy model ID')]),
+    apiBox('Chat request', requestNode, [copyButton(curl, 'Copy curl')]),
+  );
+}
+
 function renderModels(models) {
   modelRows = models;
   const showInvalid = $('show-invalid').checked;
@@ -249,6 +356,7 @@ async function refresh() {
     $('metric-valid').textContent = dashboard.valid_model_count;
     $('metric-active').textContent = dashboard.active_job_count;
     renderModels(models.models);
+    renderActiveApi(models.models);
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
   } catch (error) {

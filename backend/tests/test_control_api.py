@@ -109,6 +109,7 @@ def test_start_and_stop_fake_model(model_root: Path, tmp_path: Path) -> None:
         job = wait_for_state(client, job_id, "running")
         assert job["port"]
         assert job["runtime_endpoint"]
+        assert job["runtime_models"] == ["fixture-model"]
 
         runtime = client.get(job["runtime_endpoint"] + "/health")
         assert runtime.json()["status"] == "ok"
