@@ -12,6 +12,7 @@ DEFAULT_CONFIG_PATH = Path("/etc/axera/model-manager/config.json")
 
 @dataclass(frozen=True)
 class Settings:
+    config_path: Path = DEFAULT_CONFIG_PATH
     model_root: Path = Path("/mnt/models")
     manager_port: int = 18090
     llama_port_min: int = 18080
@@ -82,6 +83,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
     model_root = Path(values.get("model_root", Settings.model_root)).expanduser()
     data_dir = Path(values.get("data_dir", Settings.data_dir)).expanduser()
     return Settings(
+        config_path=path,
         model_root=model_root,
         manager_port=int(values.get("manager_port", Settings.manager_port)),
         llama_port_min=int(values.get("llama_port_min", Settings.llama_port_min)),

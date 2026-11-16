@@ -376,14 +376,47 @@ async function refresh() {
     $('metric-models').textContent = dashboard.model_count;
     $('metric-valid').textContent = dashboard.valid_model_count;
     $('metric-active').textContent = `${dashboard.active_job_count}/${dashboard.configured_model_limit ?? '—'}`;
+    const osMemory = dashboard.resources?.os_memory;
+    $('metric-os-memory').textContent = osMemory?.total_kb
+      ? `${((osMemory.total_kb - osMemory.avail_kb) / 1024 / 1024).toFixed(1)}/${(osMemory.total_kb / 1024 / 1024).toFixed(0)}GB`
+      : '—';
+    $('metric-os-available').textContent = osMemory?.avail_kb
+      ? `available ${(osMemory.avail_kb / 1024 / 1024).toFixed(1)}GB`
+      : '—';
     const cmm = dashboard.resources?.cmm;
     $('metric-cmm').textContent = cmm?.total_kb
       ? `${(cmm.used_kb / 1024 / 1024).toFixed(1)}/${(cmm.total_kb / 1024 / 1024).toFixed(0)}GB`
       : '—';
+    $('metric-cmm-available').textContent = cmm?.total_kb
+      ? `free ${((cmm.total_kb - cmm.used_kb) / 1024 / 1024).toFixed(1)}GB`
+      : '—';
+    const limitSelect = $('max-running-models');
+    if (document.activeElement !== limitSelect) {
+      limitSelect.value = String(dashboard.configured_model_limit || dashboard.config?.max_running_models || 1);
+    }
+    $('save-model-limit').disabled = !controlEnabled;
     renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
+async function saveModelLimit() {
+  const value = Number($('max-running-models').value);
+  if (!Number.isFinite(value) || value < 1) return;
+  if (value > 1 && !confirm(
+    `Allow up to ${value} concurrent model runtimes?\n\nConfirm OS and CMM memory are sufficient. Each runtime uses a separate port.`
+  )) return;
+  try {
+    await api('/api/v1/config', {
+      method: 'PUT',
+      body: JSON.stringify({ max_running_models: value }),
+    });
+    clearAlert();
+    await refresh();
   } catch (error) {
     showAlert(error.message);
   }
@@ -394,7 +427,9 @@ async function control(path, body) {
     if (body && !confirm('Confirm this model control action?')) return;
     const result = await api(path, { method: 'POST', body: JSON.stringify(body || {}) });
     clearAlert();
-    if (result?.job) await openLog(result.job.job_id);
+    // Stop jobs do not own a runtime log; opening their log dialog automatically
+    // previously produced an empty page immediately after clicking Stop.
+    if (result?.job && result.job.action !== "stop") await openLog(result.job.job_id);
     await refresh();
   } catch (error) {
     showAlert(error.message);
@@ -538,7 +573,9 @@ async function loadLog({ force = false, follow = null } = {}) {
   logLoading = true;
   try {
     const result = await api(`/api/v1/jobs/${currentLogJob}/logs?lines=400`);
-    content.textContent = result.lines.join('\n') || '(empty log)';
+    content.textContent = result.path
+      ? result.lines.join('\n') || '(empty log)'
+      : 'This job has no runtime log. Open the associated start job to inspect llama-server output.';
     if (shouldFollow) content.scrollTop = content.scrollHeight;
   } catch (error) {
     content.textContent = error.message;
@@ -572,6 +609,7 @@ $('theme-toggle').onclick = () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 };
 $('show-invalid').onchange = () => renderModels(modelRows);
+$('save-model-limit').onclick = saveModelLimit;
 $('profile').onchange = event => applyLaunchProfile(event.target.value);
 $('launch-submit').onclick = submitLaunchDialog;
 $('launch-save-profile').onclick = saveLaunchProfile;

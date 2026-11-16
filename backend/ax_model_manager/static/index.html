@@ -47,8 +47,33 @@
         <strong id="metric-active">—</strong>
       </article>
       <article class="metric">
+        <span>OS memory</span>
+        <strong id="metric-os-memory">—</strong>
+        <small id="metric-os-available" class="metric-detail">—</small>
+      </article>
+      <article class="metric">
         <span>CMM</span>
         <strong id="metric-cmm">—</strong>
+        <small id="metric-cmm-available" class="metric-detail">—</small>
+      </article>
+      <article class="metric metric-editor">
+        <span>Model limit</span>
+        <div class="limit-row">
+          <select id="max-running-models" aria-label="Maximum concurrent models">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+          <button id="save-model-limit" class="small">Save</button>
+        </div>
+        <small class="metric-detail">Concurrent runtimes use separate ports</small>
       </article>
     </section>
 

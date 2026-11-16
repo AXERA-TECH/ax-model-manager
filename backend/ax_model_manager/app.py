@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 import time
 import urllib.request
 from hmac import compare_digest
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,10 @@ class StartRequest(BaseModel):
     ctxcp: int | None = Field(default=None, ge=0, le=128)
     mtp: bool | None = None
     sampling: SamplingInput | None = None
+
+
+class ConfigUpdateRequest(BaseModel):
+    max_running_models: int = Field(ge=1, le=10)
 
 
 class StopRequest(BaseModel):
@@ -101,7 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=list(selected.allowed_origins),
             allow_credentials=False,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PUT", "DELETE"],
             allow_headers=["Authorization", "Content-Type"],
         )
 
@@ -203,6 +209,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def require_control(request: Request) -> None:
         if not request.app.state.settings.enable_control:
             raise HTTPException(status_code=404, detail="control endpoints are disabled")
+
+    @app.put(
+        "/api/v1/config",
+        dependencies=[Depends(require_auth), Depends(require_control)],
+    )
+    async def update_config(body: ConfigUpdateRequest, request: Request) -> dict[str, Any]:
+        active_runtimes = [
+            job for job in request.app.state.jobs.active()
+            if job.action == "start"
+        ]
+        if body.max_running_models < len(active_runtimes):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "cannot set limit below active runtime count",
+                    "active_runtime_count": len(active_runtimes),
+                },
+            )
+
+        config_path = Path(app.state.settings.config_path)
+        try:
+            values = {}
+            if config_path.is_file():
+                values = json.loads(config_path.read_text(encoding="utf-8"))
+            values["max_running_models"] = body.max_running_models
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = config_path.with_suffix(config_path.suffix + ".tmp")
+            temporary.write_text(
+                json.dumps(values, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary, config_path)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=503, detail=f"cannot save config: {exc}") from exc
+
+        app.state.settings = replace(
+            app.state.settings,
+            max_running_models=body.max_running_models,
+        )
+        audit(
+            request,
+            "config_updated",
+            max_running_models=body.max_running_models,
+            config_path=str(config_path),
+        )
+        return app.state.settings.public_dict()
 
     @app.post(
         "/api/v1/models/{model_id}/manifest/confirm",

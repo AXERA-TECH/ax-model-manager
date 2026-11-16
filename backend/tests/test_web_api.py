@@ -73,6 +73,15 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert "AXERA Model Manager" in index.text
         assert "OpenAI-compatible API" in index.text
         assert 'id="theme-toggle"' in index.text
+        assert 'id="metric-os-memory"' in index.text
+        assert 'id="max-running-models"' in index.text
+        assert 'id="save-model-limit"' in index.text
+        assert "max-height: 42rem" in (
+            Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
+        ).read_text(encoding="utf-8")
+        assert ".side .panel { flex:1; display:flex; flex-direction:column; min-height:0; margin-bottom:0; }" in (
+            Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
+        ).read_text(encoding="utf-8")
         assert 'id="launch-dialog"' in index.text
         assert 'id="launch-force"' in index.text
         assert 'class="panel audit-panel"' in index.text

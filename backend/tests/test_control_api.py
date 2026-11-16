@@ -11,6 +11,7 @@ from conftest import write_model_package
 
 def control_settings(model_root: Path, tmp_path: Path) -> Settings:
     return Settings(
+        config_path=tmp_path / "manager-config.json",
         model_root=model_root,
         data_dir=tmp_path / "manager-data",
         read_only=False,
@@ -38,6 +39,17 @@ def test_control_endpoints_are_disabled_by_default(model_root: Path) -> None:
     with TestClient(create_app(Settings(model_root=model_root))) as client:
         assert client.post("/api/v1/models/fixture-model/start", json={}).status_code == 404
         assert client.post("/api/v1/models/fixture-model/stop", json={}).status_code == 404
+
+
+def test_update_config_persists_model_limit(model_root: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.put("/api/v1/config", json={"max_running_models": 2})
+        assert response.status_code == 200
+        assert response.json()["max_running_models"] == 2
+
+        config_path = tmp_path / "manager-config.json"
+        assert json.loads(config_path.read_text(encoding="utf-8"))["max_running_models"] == 2
+        assert client.get("/api/v1/dashboard").json()["configured_model_limit"] == 2
 
 
 def test_confirm_draft_manifest_without_touching_model_directory(model_root: Path, tmp_path: Path) -> None:

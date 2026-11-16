@@ -174,6 +174,8 @@ http://<board-ip>:18090/
 
 ```text
 Dashboard 概览
+Dashboard 显示 OS memory / CMM / model limit
+Model limit 可在 Dashboard 顶部选择并保存
 模型列表
 valid / invalid 状态
 manifest 来源
@@ -192,6 +194,7 @@ job 列表
 job 日志查看，默认每秒自动刷新并跟随尾部
 audit 记录查看
 audit 固定高度滚动显示
+Models 卡片区固定高度滚动显示
 OpenAI-compatible API 信息展示
 ```
 

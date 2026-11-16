@@ -34,3 +34,4 @@ def test_load_settings_reads_model_root(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"model_root": str(tmp_path)}), encoding="utf-8")
     assert load_settings(path).model_root == tmp_path
+    assert load_settings(path).config_path == path
