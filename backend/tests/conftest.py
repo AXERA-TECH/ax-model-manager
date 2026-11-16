@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,8 @@ def write_model_package(
 ) -> Path:
     binary = directory / "bin" / "llama-server"
     binary.parent.mkdir(parents=True, exist_ok=True)
-    binary.write_bytes(b"#!/bin/sh\n")
+    fake_server = Path(__file__).resolve().parents[2] / "scripts" / "fake_llama_server.py"
+    shutil.copyfile(fake_server, binary)
     os.chmod(binary, 0o755 if executable else 0o644)
 
     model = directory / "fixture.gguf"

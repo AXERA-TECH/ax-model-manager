@@ -56,10 +56,22 @@ ax-model-manager/
 - 本地 fixture 模型生成脚本
 - 25 个单元 / API 测试
 
+同时完成了 **Phase 2 的本机 fake 生命周期原型**：
+
+- JobStore 与异步任务状态
+- fake-subprocess 进程后端
+- `start` / `stop` 控制端点
+- `18080-18089` 端口自动分配
+- `/health` ready 轮询
+- `/slots` IN USE guard
+- force stop
+- audit JSONL 记录
+- fake llama-server，用于完全本机测试
+
 尚未实现：
 
-- 启动 / 停止 / 重启 / 切换
 - systemd 进程托管
+- 重启 / 切换
 - Web Admin UI
 - 多板 Central Console
 - 模型下载与更新
@@ -95,3 +107,5 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 ```
 
 FastAPI 仍然只负责管理平面；聊天推理继续由 llama-server 的 OpenAI-compatible API 提供。
+
+当前 `fake-subprocess` 后端只用于本机测试，不是生产进程管理方案。

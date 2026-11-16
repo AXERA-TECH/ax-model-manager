@@ -1,7 +1,8 @@
 # AXERA Model Manager Backend
 
-Current status: **read-only model discovery MVP**. It deliberately has no
-start/stop/restart endpoints yet.
+Current status: **read-only model discovery MVP by default**. A
+development-only `fake-subprocess` backend implements local start/stop job
+lifecycles for tests, but it is not enabled by normal `./scripts/dev_server.sh`.
 
 ## Install
 
@@ -69,5 +70,14 @@ http://127.0.0.1:18090/docs
 | GET | `/api/v1/models/{id}/manifest` | Package or inferred draft manifest |
 | GET | `/api/v1/models/{id}/validate` | Manifest/artifact validation result |
 
-Control endpoints such as start, stop, restart, and switch are intentionally
-not implemented in this phase.
+Additional endpoints when `enable_control=true` and
+`process_backend=fake-subprocess`:
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/v1/models/{id}/start` | Start the fake local runtime |
+| POST | `/api/v1/models/{id}/stop` | Stop with IN USE guard |
+| GET | `/api/v1/jobs` | List jobs |
+| GET | `/api/v1/jobs/{job_id}` | Get job state |
+
+Production systemd integration, restart, and switch are not implemented yet.

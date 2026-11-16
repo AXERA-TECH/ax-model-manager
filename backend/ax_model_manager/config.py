@@ -18,6 +18,9 @@ class Settings:
     llama_port_max: int = 18089
     data_dir: Path = Path("/var/lib/axera-model-manager")
     read_only: bool = True
+    enable_control: bool = False
+    process_backend: str = "none"
+    max_running_models: int = 1
     auth_token: str = ""
     allowed_origins: tuple[str, ...] = ()
 
@@ -30,6 +33,10 @@ class Settings:
             raise ValueError("llama_port_min cannot be greater than llama_port_max")
         if self.llama_port_min <= self.manager_port <= self.llama_port_max:
             raise ValueError("manager_port must not overlap the llama-server port range")
+        if self.enable_control and self.process_backend not in {"fake-subprocess"}:
+            raise ValueError("enable_control currently requires process_backend=fake-subprocess")
+        if self.max_running_models < 1:
+            raise ValueError("max_running_models must be at least 1")
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +46,9 @@ class Settings:
             "llama_port_max": self.llama_port_max,
             "data_dir": str(self.data_dir),
             "read_only": self.read_only,
+            "enable_control": self.enable_control,
+            "process_backend": self.process_backend,
+            "max_running_models": self.max_running_models,
             "authentication": bool(self.auth_token),
             "allowed_origins": list(self.allowed_origins),
         }
@@ -75,6 +85,9 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         llama_port_max=int(values.get("llama_port_max", Settings.llama_port_max)),
         data_dir=data_dir,
         read_only=bool(values.get("read_only", True)),
+        enable_control=bool(values.get("enable_control", False)),
+        process_backend=str(values.get("process_backend", "none")),
+        max_running_models=int(values.get("max_running_models", 1)),
         auth_token=str(values.get("auth_token", "")),
         allowed_origins=tuple(str(item) for item in values.get("allowed_origins", [])),
     )
