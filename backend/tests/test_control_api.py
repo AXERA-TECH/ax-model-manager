@@ -143,10 +143,19 @@ def test_second_model_is_rejected_while_limit_is_reached(model_root: Path, tmp_p
 
         second = client.post("/api/v1/models/second-model/start", json={})
         assert second.status_code == 409
-        assert second.json()["detail"]["message"] == "model limit reached"
+        detail = second.json()["detail"]
+        assert detail["message"] == "model limit reached"
+        assert detail["override_available"] is True
 
-        client.post("/api/v1/models/fixture-model/stop", json={})
-        wait_for_state(client, job_id, "stopped")
+        forced = client.post("/api/v1/models/second-model/start", json={"force": True})
+        assert forced.status_code == 200
+        second_job_id = forced.json()["job"]["job_id"]
+        wait_for_state(client, second_job_id, "running", timeout=10.0)
+        assert client.get("http://127.0.0.1:18081/health").json()["status"] == "ok"
+
+        for model_id, runtime_job_id in [("fixture-model", job_id), ("second-model", second_job_id)]:
+            client.post(f"/api/v1/models/{model_id}/stop", json={"timeout_seconds": 2})
+            wait_for_state(client, runtime_job_id, "stopped")
 
 
 def test_stop_is_blocked_while_slot_is_processing_and_force_stops(model_root: Path, tmp_path: Path) -> None:

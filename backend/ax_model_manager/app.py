@@ -336,6 +336,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
 
+    def board_resources() -> dict[str, Any]:
+        """Read optional tempmon data for the risk confirmation UI."""
+
+        try:
+            data = get_runtime_json(8080, "/api/stats", timeout=0.4)
+            temperatures = [
+                float(zone["c"]) for zone in data.get("zones", [])
+                if isinstance(zone, dict) and isinstance(zone.get("c"), (int, float))
+            ]
+            return {
+                "available": True,
+                "cmm": data.get("cmm"),
+                "os_memory": data.get("mem"),
+                "npu": data.get("npu"),
+                "npu_max_temp_c": max(temperatures) if temperatures else None,
+            }
+        except Exception:
+            return {
+                "available": False,
+                "cmm": None,
+                "os_memory": None,
+                "npu": None,
+                "npu_max_temp_c": None,
+            }
+
     def artifact_path(record: dict[str, Any], key: str) -> Path | None:
         report = next((item for item in record["artifacts"] if item["key"] == key), None)
         if not report or not report.get("path"):
@@ -528,12 +553,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if existing:
             return existing
         ignore = ignore_job_ids or set()
-        active = [job for job in request.app.state.jobs.active() if job.id not in ignore]
-        if len(active) >= request.app.state.settings.max_running_models:
+        active = [
+            job for job in request.app.state.jobs.active()
+            if job.id not in ignore and job.action == "start"
+        ]
+        if len(active) >= request.app.state.settings.max_running_models and not body.force:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "message": "model limit reached",
+                    "limit": request.app.state.settings.max_running_models,
+                    "override_available": True,
                     "active_jobs": [item.public() for item in active],
                 },
             )
@@ -548,6 +578,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             job=job.id,
             profile=body.profile,
             port=port,
+            **({"force": True} if len(active) >= request.app.state.settings.max_running_models else {}),
         )
         threading.Thread(
             target=monitor_start,
@@ -640,8 +671,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model_root_ok = False
             model_root_error = str(exc)
         active_jobs = request.app.state.jobs.active()
+        runtime_jobs = [job for job in active_jobs if job.action == "start"]
         request.app.state.jobs.reconcile_composite_jobs()
         active_jobs = request.app.state.jobs.active()
+        runtime_jobs = [job for job in active_jobs if job.action == "start"]
         return {
             "version": __version__,
             "config": request.app.state.settings.public_dict(),
@@ -649,8 +682,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "model_root_error": model_root_error,
             "model_count": len(records),
             "valid_model_count": sum(1 for item in records if item["valid"]),
-            "active_job_count": len(active_jobs),
+            "active_job_count": len(runtime_jobs),
+            "configured_model_limit": request.app.state.settings.max_running_models,
             "active_jobs": [job.public() for job in active_jobs],
+            "resources": board_resources(),
         }
 
     @app.post(

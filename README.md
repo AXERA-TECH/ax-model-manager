@@ -134,6 +134,8 @@ systemd-run 启动独立 transient unit
 停止模型
 切换模型
 重启模型
+多模型并行，自动分配不同端口
+达到模型数量限制后可由用户强制越过
 保存 / 删除 launch profile
 job 持久化
 audit 记录
@@ -146,6 +148,7 @@ Qwen3.5-0.8B 启动 / 停止
 Qwen3.6-35B-A3B 启动 / 停止
 Qwen3.5-0.8B → Qwen3.6-35B-A3B 切换
 Qwen3.5-0.8B 重启
+Qwen3.5-0.8B + Qwen3-ASR-1.7B 双模型并行
 benchmark_greedy profile 保存与启动
 Manager 重启不影响运行中的 llama-server
 Manager 重启后 job 状态可恢复
@@ -181,11 +184,14 @@ active job 状态
 停止模型
 切换模型
 重启模型
-启动参数配置：context / batch / ubatch / cache_ram / ctxcp / MTP / port
-采样参数配置：temperature / top-k / top-p / min-p / repeat / presence / frequency
+在模型卡片内打开启动参数配置
+启动参数：context / batch / ubatch / cache_ram / ctxcp / MTP / port
+采样参数：temperature / top-k / top-p / min-p / repeat / presence / frequency
+白天 / 黑夜主题切换
 job 列表
 job 日志查看，默认每秒自动刷新并跟随尾部
 audit 记录查看
+audit 固定高度滚动显示
 OpenAI-compatible API 信息展示
 ```
 

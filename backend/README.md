@@ -100,6 +100,9 @@ Additional endpoints when `enable_control=true`:
 | GET | `/api/v1/dashboard` | Aggregated dashboard state |
 
 Production systemd start/stop/switch/restart is implemented.
+`max_running_models` is a conservative configured limit. A start request with
+`force: true` may exceed it after the user confirms OS/CMM memory risk. Each
+runtime receives a distinct port from `18080-18089`.
 Running jobs also retain the model IDs advertised by the runtime's
 `GET /v1/models` endpoint. The admin UI uses this to show the correct
 OpenAI-compatible base URL and request example.

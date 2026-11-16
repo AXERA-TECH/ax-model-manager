@@ -8,8 +8,19 @@ let logTimer = null;
 let logLoading = false;
 let controlEnabled = false;
 let modelRows = [];
+let launchModel = null;
+let launchMode = 'start';
+let launchManifest = null;
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
+
+function applyTheme(theme) {
+  const selected = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = selected;
+  localStorage.setItem('axmm.theme', selected);
+  $('theme-toggle').textContent = selected === 'light' ? '🌙' : '☀️';
+  $('theme-toggle').title = selected === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+}
 
 function authHeaders() {
   const token = tokenInput.value.trim();
@@ -125,9 +136,8 @@ function renderActiveApi(models) {
   const statePill = $('api-state');
   container.replaceChildren();
 
-  const activeModel = models.find(model => model.active_job);
-  const active = activeModel?.active_job;
-  if (!active?.port) {
+  const activeModels = models.filter(model => model.active_job?.port);
+  if (!activeModels.length) {
     statePill.className = 'pill';
     statePill.textContent = 'No model running';
     const message = document.createElement('p');
@@ -138,51 +148,60 @@ function renderActiveApi(models) {
     return;
   }
 
-  const state = active.state || 'unknown';
+  const firstModel = activeModels[0];
+  const firstActive = firstModel.active_job;
+  const state = firstActive.state || 'unknown';
   statePill.className = `pill ${stateClass(state)}`;
-  statePill.textContent = `${activeModel.name} · ${state}`;
+  statePill.textContent = activeModels.length === 1
+    ? `${firstModel.name} · ${state}`
+    : `${activeModels.length} runtimes · first ${firstModel.name}`;
 
-  const base = `${publicRuntimeOrigin(active.port)}/v1`;
-  const chatUrl = `${base}/chat/completions`;
-  const modelId = active.runtime_models?.[0] || activeModel.id;
-  const curl = [
-    `curl ${chatUrl} \\`,
-    `  -H 'Content-Type: application/json' \\`,
-    `  --data-binary '{"model":"${modelId}","messages":[{"role":"user","content":"Hello"}]}'`,
-  ].join('\n');
+  for (const activeModel of activeModels) {
+    const active = activeModel.active_job;
+    const base = `${publicRuntimeOrigin(active.port)}/v1`;
+    const chatUrl = `${base}/chat/completions`;
+    const modelId = active.runtime_models?.[0] || activeModel.id;
+    const curl = [
+      `curl ${chatUrl} \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  --data-binary '{"model":"${modelId}","messages":[{"role":"user","content":"Hello"}]}'`,
+    ].join('\n');
 
-  const baseUrlNode = document.createElement('div');
-  const baseLink = document.createElement('a');
-  baseLink.href = base;
-  baseLink.target = '_blank';
-  baseLink.rel = 'noopener';
-  baseLink.textContent = base;
-  baseUrlNode.append(baseLink);
+    const baseUrlNode = document.createElement('div');
+    const baseLink = document.createElement('a');
+    baseLink.href = base;
+    baseLink.target = '_blank';
+    baseLink.rel = 'noopener';
+    baseLink.textContent = base;
+    baseUrlNode.append(baseLink);
 
-  const modelNode = document.createElement('code');
-  modelNode.textContent = modelId;
-  modelNode.title = active.runtime_models?.length
-    ? active.runtime_models.join('\n')
-    : 'Advertised model ID will be refreshed after the runtime becomes ready';
+    const modelNode = document.createElement('code');
+    modelNode.textContent = modelId;
+    modelNode.title = active.runtime_models?.length
+      ? active.runtime_models.join('\n')
+      : 'Advertised model ID will be refreshed after the runtime becomes ready';
 
-  const requestNode = document.createElement('pre');
-  requestNode.textContent = curl;
+    const requestNode = document.createElement('pre');
+    requestNode.textContent = curl;
 
-  container.append(
-    apiBox('OpenAI base URL', baseUrlNode, [
-      copyButton(base, 'Copy base URL'),
-      copyButton(chatUrl, 'Copy chat URL'),
-    ]),
-    apiBox('Model ID', modelNode, [copyButton(modelId, 'Copy model ID')]),
-    apiBox('Chat request', requestNode, [copyButton(curl, 'Copy curl')]),
-  );
+    container.append(
+      apiBox(`OpenAI base URL · ${activeModel.name}`, baseUrlNode, [
+        copyButton(base, 'Copy base URL'),
+        copyButton(chatUrl, 'Copy chat URL'),
+      ]),
+      apiBox(`Model ID · ${activeModel.name}`, modelNode, [copyButton(modelId, 'Copy model ID')]),
+      apiBox(`Chat request · ${activeModel.name}`, requestNode, [copyButton(curl, 'Copy curl')]),
+    );
+  }
 }
 
-function renderModels(models) {
+function renderModels(models, config = {}) {
   modelRows = models;
   const showInvalid = $('show-invalid').checked;
   const container = $('models');
   const anyActive = models.some(model => Boolean(model.active_job));
+  const activeCount = models.filter(model => model.active_job?.action === 'start').length;
+  const modelLimit = Number(config.max_running_models || 1);
   container.replaceChildren();
   for (const model of models) {
     if (!showInvalid && !model.valid) continue;
@@ -242,23 +261,23 @@ function renderModels(models) {
       if (!active && model.ready_to_start) {
         const start = document.createElement('button');
         start.className = 'small primary';
-        start.textContent = 'Start';
-        start.onclick = () => startModel(model.id);
+        start.textContent = activeCount >= modelLimit ? 'Force start…' : 'Start…';
+        start.onclick = () => openLaunchDialog(model, 'start');
         actions.append(start);
       }
       if (model.valid) {
-        const saveProfile = document.createElement('button');
-        saveProfile.className = 'small';
-        saveProfile.textContent = 'Save options';
-        saveProfile.title = 'Save the current start options to this model default profile';
-        saveProfile.onclick = () => saveProfileForModel(model.id);
-        actions.append(saveProfile);
+        const options = document.createElement('button');
+        options.className = 'small';
+        options.textContent = 'Options…';
+        options.title = 'Edit this model profile and launch options';
+        options.onclick = () => openLaunchDialog(model, active ? 'restart' : 'start');
+        actions.append(options);
       }
       if (!active && anyActive && model.ready_to_start) {
         const switchButton = document.createElement('button');
         switchButton.className = 'small';
-        switchButton.textContent = 'Switch to';
-        switchButton.onclick = () => switchModel(model.id);
+        switchButton.textContent = 'Switch to…';
+        switchButton.onclick = () => openLaunchDialog(model, 'switch');
         actions.append(switchButton);
       }
       if (active) {
@@ -269,8 +288,8 @@ function renderModels(models) {
         actions.append(stop);
         const restart = document.createElement('button');
         restart.className = 'small';
-        restart.textContent = 'Restart';
-        restart.onclick = () => restartModel(model.id);
+        restart.textContent = 'Restart…';
+        restart.onclick = () => openLaunchDialog(model, 'restart');
         actions.append(restart);
       }
     }
@@ -356,8 +375,12 @@ async function refresh() {
     $('metric-manager').textContent = dashboard.config?.read_only ? 'read-only' : 'control';
     $('metric-models').textContent = dashboard.model_count;
     $('metric-valid').textContent = dashboard.valid_model_count;
-    $('metric-active').textContent = dashboard.active_job_count;
-    renderModels(models.models);
+    $('metric-active').textContent = `${dashboard.active_job_count}/${dashboard.configured_model_limit ?? '—'}`;
+    const cmm = dashboard.resources?.cmm;
+    $('metric-cmm').textContent = cmm?.total_kb
+      ? `${(cmm.used_kb / 1024 / 1024).toFixed(1)}/${(cmm.total_kb / 1024 / 1024).toFixed(0)}GB`
+      : '—';
+    renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
@@ -394,7 +417,7 @@ function currentSamplingPayload() {
 
 function currentLaunchPayload() {
   return {
-    profile: 'default',
+    profile: $('profile').value || 'default',
     context: Number($('context').value) || 4096,
     batch: Number($('batch').value) || 4096,
     ubatch: Number($('ubatch').value) || 4096,
@@ -405,38 +428,90 @@ function currentLaunchPayload() {
   };
 }
 
-function startModel(id) {
-  const payload = { ...currentLaunchPayload() };
-  const port = Number($('port').value);
-  if (port) payload.port = port;
-  control(`/api/v1/models/${id}/start`, payload);
-}
-
 function stopModel(id) {
   control(`/api/v1/models/${id}/stop`, { timeout_seconds: 15 });
 }
 
-function switchModel(id) {
-  const payload = {
-    ...currentLaunchPayload(),
-    stop_timeout_seconds: 20,
-  };
-  control(`/api/v1/models/${id}/switch-to`, payload);
+function applyLaunchProfile(name) {
+  const profile = launchManifest?.profiles?.[name] || {};
+  $('context').value = profile.context ?? 4096;
+  $('batch').value = profile.batch ?? 4096;
+  $('ubatch').value = profile.ubatch ?? 4096;
+  $('cache-ram').value = profile.cache_ram ?? 0;
+  $('ctxcp').value = profile.ctxcp ?? 0;
+  $('mtp').checked = Boolean(profile.mtp);
+  const sampling = profile.sampling || {};
+  $('temperature').value = sampling.temperature ?? 0;
+  $('top-k').value = sampling.top_k ?? 0;
+  $('top-p').value = sampling.top_p ?? 1;
+  $('min-p').value = sampling.min_p ?? 0;
+  $('repeat-last-n').value = sampling.repeat_last_n ?? 0;
+  $('repeat-penalty').value = sampling.repeat_penalty ?? 1;
+  $('presence-penalty').value = sampling.presence_penalty ?? 0;
+  $('frequency-penalty').value = sampling.frequency_penalty ?? 0;
+  $('port').value = '';
+  $('launch-force').checked = false;
 }
 
-function restartModel(id) {
-  const payload = {
-    ...currentLaunchPayload(),
-    stop_timeout_seconds: 20,
-  };
-  control(`/api/v1/models/${id}/restart`, payload);
+async function openLaunchDialog(model, mode = 'start') {
+  try {
+    const detail = await api(`/api/v1/models/${model.id}`);
+    launchModel = model;
+    launchMode = mode;
+    launchManifest = detail.manifest || {};
+    $('launch-title').textContent = {
+      start: 'Start model',
+      restart: 'Restart model',
+      switch: 'Switch to model',
+    }[mode] || 'Model options';
+    $('launch-model-name').textContent = `${model.name} · ${model.id}`;
+    $('launch-submit').textContent = mode === 'switch' ? 'Switch' : mode === 'restart' ? 'Restart' : 'Start';
+    $('launch-force').parentElement.classList.toggle('hidden', mode !== 'start');
+
+    const profileSelect = $('profile');
+    profileSelect.replaceChildren();
+    for (const name of model.profiles?.length ? model.profiles : ['default']) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      profileSelect.append(option);
+    }
+    profileSelect.value = model.profiles?.includes('default') ? 'default' : profileSelect.firstElementChild?.value;
+    applyLaunchProfile(profileSelect.value);
+    $('launch-dialog').showModal();
+  } catch (error) {
+    showAlert(error.message);
+  }
 }
 
-async function saveProfileForModel(id) {
-  if (!confirm(`Save the current start options as the default profile for ${id}?`)) return;
+async function submitLaunchDialog() {
+  if (!launchModel) return;
+  const payload = { ...currentLaunchPayload() };
+  const port = Number($('port').value);
+  if (port) payload.port = port;
+  if (launchMode === 'start') payload.force = $('launch-force').checked;
+  if (launchMode !== 'start') payload.stop_timeout_seconds = 20;
+
+  if (payload.force && !confirm(
+    'Force start beyond the configured model-count limit?\n\nConfirm OS and CMM memory are sufficient. Multiple runtimes will use separate ports.'
+  )) return;
+
+  const endpoint = {
+    start: `/api/v1/models/${launchModel.id}/start`,
+    restart: `/api/v1/models/${launchModel.id}/restart`,
+    switch: `/api/v1/models/${launchModel.id}/switch-to`,
+  }[launchMode];
+  $('launch-dialog').close();
+  await control(endpoint, payload);
+}
+
+async function saveLaunchProfile() {
+  if (!launchModel) return;
+  const profileName = $('profile').value || 'default';
+  if (!confirm(`Save current options to profile ${profileName} for ${launchModel.id}?`)) return;
   const payload = { ...currentLaunchPayload(), reasoning: 'off' };
   try {
-    await api(`/api/v1/models/${id}/profiles/default`, {
+    await api(`/api/v1/models/${launchModel.id}/profiles/${profileName}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
@@ -493,12 +568,28 @@ $('connect').onclick = () => {
   refresh();
 };
 $('refresh').onclick = refresh;
+$('theme-toggle').onclick = () => {
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+};
 $('show-invalid').onchange = () => renderModels(modelRows);
+$('profile').onchange = event => applyLaunchProfile(event.target.value);
+$('launch-submit').onclick = submitLaunchDialog;
+$('launch-save-profile').onclick = saveLaunchProfile;
+$('launch-cancel').onclick = () => $('launch-dialog').close();
+$('launch-force').onchange = event => {
+  if (event.target.checked) {
+    event.target.checked = confirm(
+      'Start beyond the configured model-count limit? Confirm OS/CMM memory is sufficient.'
+    );
+  }
+};
 $('reload-log').onclick = () => loadLog({ force: true, follow: Boolean($('follow-log')?.checked) });
 $('close-log').onclick = () => $('log-dialog').close();
 $('auto-log').onchange = startLogPolling;
 $('log-dialog').addEventListener('close', stopLogPolling);
 tokenInput.addEventListener('keydown', event => { if (event.key === 'Enter') $('connect').click(); });
+
+applyTheme(localStorage.getItem('axmm.theme'));
 
 refresh();
 scheduleRefresh();

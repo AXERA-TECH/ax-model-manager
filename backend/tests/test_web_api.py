@@ -22,6 +22,8 @@ def test_dashboard_reports_models_and_config(model_root: Path, tmp_path: Path) -
         assert payload["model_count"] == 1
         assert payload["valid_model_count"] == 1
         assert payload["active_job_count"] == 0
+        assert payload["configured_model_limit"] == 1
+        assert payload["resources"]["available"] is False
         assert payload["config"]["read_only"] is True
 
 
@@ -70,6 +72,13 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert index.status_code == 200
         assert "AXERA Model Manager" in index.text
         assert "OpenAI-compatible API" in index.text
+        assert 'id="theme-toggle"' in index.text
+        assert 'id="launch-dialog"' in index.text
+        assert 'id="launch-force"' in index.text
+        assert 'class="panel audit-panel"' in index.text
+        assert "max-height: 14rem" in (
+            Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
+        ).read_text(encoding="utf-8")
         assert 'id="auto-log"' in index.text
         assert 'id="follow-log"' in index.text
         assert client.get("/ui/app.js").status_code == 200
