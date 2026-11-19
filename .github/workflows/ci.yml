@@ -58,6 +58,18 @@ jobs:
             exit 1
           fi
 
+      - name: Reject internal engineering records
+        run: |
+          set -euo pipefail
+          if git ls-files 'docs/*' | grep -q .; then
+            echo "::error::Internal docs/ directory must not be published"
+            exit 1
+          fi
+          if git grep -n -E '/mnt/tangqi|/home/[A-Za-z0-9_.-]+|qiushui|junda|tangqi' -- .; then
+            echo "::error::Internal path or personal identifier found in tracked source"
+            exit 1
+          fi
+
       - name: Run tests
         run: pytest backend/tests -q
 
