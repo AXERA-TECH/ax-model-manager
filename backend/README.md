@@ -52,6 +52,8 @@ Token:     local-dev-token
 | GET | `/api/v1/jobs/{job_id}/logs` | 日志尾部 |
 | GET | `/api/v1/audit` | audit 记录 |
 | GET | `/api/v1/dashboard` | 聚合状态与资源快照 |
+| GET | `/api/v1/resources` | 当前资源、CPU percent 与 max |
+| POST | `/api/v1/resources/max/reset` | 清除资源 max |
 | GET | `/api/v1/runtimes` | reconcile systemd runtime 与孤儿 |
 
 ### 控制，需要 `enable_control=true`

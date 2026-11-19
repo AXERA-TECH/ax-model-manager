@@ -160,6 +160,33 @@ def test_asr_preview_uses_minimal_recommended_server_arguments(
         assert "--spec-type" not in argv
 
 
+def test_llama_preview_can_enable_prometheus_metrics_endpoint(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    from conftest import write_model_package
+
+    write_model_package(model_root / "metrics-model", manifest={
+        "schema_version": 1,
+        "id": "metrics-model",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "profiles": {"default": {"context": 4096, "metrics": True}},
+    })
+
+    with make_client(model_root, tmp_path) as client:
+        response = client.post("/api/v1/models/metrics-model/preview", json={})
+
+        assert response.status_code == 200
+        assert "--metrics" in response.json()["argv"]
+
+        index = client.get("/")
+        assert 'id="metrics"' in index.text
+
+
 def test_voxcpm2_preview_uses_acoustic_model_and_malloc_environment(
     model_root: Path,
     tmp_path: Path,

@@ -1,5 +1,18 @@
 # Releases
 
+## 0.3.0 — 2026-11-19
+
+Third-party integration and resource-monitoring release.
+
+- `GET /api/v1/resources` with current board state and process-local maxima
+- CPU percent computed from `/proc/stat` deltas
+- `POST /api/v1/resources/max/reset`
+- dashboard now includes a compatibility `resource_monitor` payload
+- model manifests can declare client defaults: system prompt, max output tokens,
+  KV cache/attention quantization, and speculative decoding metadata
+- profiles can enable llama-server `--metrics`
+- public third-party integration guide: `docs/skills.md`
+
 ## 0.2.1 — 2026-11-17
 
 Stable OCR / ASR / TTS package presets.

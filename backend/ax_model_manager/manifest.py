@@ -18,7 +18,7 @@ ARTIFACT_KINDS = {
 }
 PROFILE_KEYS = {
     "context", "batch", "ubatch", "cache_ram", "ctxcp", "mtp", "reasoning",
-    "image_max_tokens", "port", "startup_timeout_seconds", "sampling",
+    "image_max_tokens", "port", "startup_timeout_seconds", "sampling", "metrics",
     "threads", "http_threads", "env",
 }
 SUPPORTED_PROFILE_ENV = {
@@ -42,6 +42,15 @@ SAMPLING_RANGES = {
 }
 CAPABILITIES = {"text", "image", "audio", "tts", "image_gen"}
 ENGINES = {"llama-server", "llama-tts", "llama-mtmd-cli", "llama-cli"}
+DEFAULT_KEYS = {
+    "system_prompt",
+    "max_output_tokens",
+    "kv_cache_quantization",
+    "attention_quantization",
+    "speculative",
+}
+SPECULATIVE_KEYS = {"type", "enabled", "draft_n_max"}
+QUANTIZATION_RE = re.compile(r"^[A-Za-z0-9_.:+-]{1,64}$")
 
 
 @dataclass
@@ -172,6 +181,11 @@ def _validate_profiles(profiles: Any) -> tuple[dict[str, Any], list[str], list[s
         elif "mtp" in profile:
             clean["mtp"] = profile["mtp"]
 
+        if "metrics" in profile and not isinstance(profile["metrics"], bool):
+            errors.append(f"profiles.{name}.metrics must be boolean")
+        elif "metrics" in profile:
+            clean["metrics"] = profile["metrics"]
+
         if "reasoning" in profile:
             if profile["reasoning"] not in {"off", "low", "medium", "high"}:
                 errors.append(f"profiles.{name}.reasoning must be off, low, medium, or high")
@@ -227,6 +241,75 @@ def _validate_profiles(profiles: Any) -> tuple[dict[str, Any], list[str], list[s
     if "default" in normalized and not any(v for k, v in normalized.items() if k != "default"):
         warnings.append("only the default profile is configured")
     return normalized, errors, warnings
+
+
+def _validate_defaults(defaults: Any) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    if defaults is None:
+        return {}, errors
+    if not isinstance(defaults, dict):
+        return {}, ["defaults must be an object"]
+
+    unknown = sorted(set(defaults) - DEFAULT_KEYS)
+    if unknown:
+        errors.append(f"defaults has unknown keys: {', '.join(unknown)}")
+
+    clean: dict[str, Any] = {}
+    system_prompt = defaults.get("system_prompt")
+    if system_prompt is not None:
+        if not isinstance(system_prompt, str) or len(system_prompt) > 16_384:
+            errors.append("defaults.system_prompt must be a string of at most 16384 characters")
+        else:
+            clean["system_prompt"] = system_prompt
+
+    max_output_tokens = defaults.get("max_output_tokens")
+    if max_output_tokens is not None:
+        if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 1_000_000:
+            errors.append("defaults.max_output_tokens must be an integer between 1 and 1000000")
+        else:
+            clean["max_output_tokens"] = max_output_tokens
+
+    for key in ("kv_cache_quantization", "attention_quantization"):
+        value = defaults.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not QUANTIZATION_RE.fullmatch(value):
+            errors.append(f"defaults.{key} must match [A-Za-z0-9_.:+-] and contain 1-64 characters")
+        else:
+            clean[key] = value
+
+    speculative = defaults.get("speculative")
+    if speculative is not None:
+        if not isinstance(speculative, dict):
+            errors.append("defaults.speculative must be an object")
+        else:
+            unknown_speculative = sorted(set(speculative) - SPECULATIVE_KEYS)
+            if unknown_speculative:
+                errors.append(
+                    f"defaults.speculative has unknown keys: {', '.join(unknown_speculative)}"
+                )
+            clean_speculative: dict[str, Any] = {}
+            speculative_type = speculative.get("type")
+            if speculative_type is not None:
+                if not isinstance(speculative_type, str) or not QUANTIZATION_RE.fullmatch(speculative_type):
+                    errors.append("defaults.speculative.type must contain 1-64 safe identifier characters")
+                else:
+                    clean_speculative["type"] = speculative_type
+            enabled = speculative.get("enabled")
+            if enabled is not None:
+                if not isinstance(enabled, bool):
+                    errors.append("defaults.speculative.enabled must be boolean")
+                else:
+                    clean_speculative["enabled"] = enabled
+            draft_n_max = speculative.get("draft_n_max")
+            if draft_n_max is not None:
+                if isinstance(draft_n_max, bool) or not isinstance(draft_n_max, int) or not 1 <= draft_n_max <= 64:
+                    errors.append("defaults.speculative.draft_n_max must be an integer between 1 and 64")
+                else:
+                    clean_speculative["draft_n_max"] = draft_n_max
+            if clean_speculative:
+                clean["speculative"] = clean_speculative
+    return clean, errors
 
 
 def parse_manifest_file(path: Path) -> dict[str, Any]:
@@ -292,6 +375,8 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
     profiles, profile_errors, profile_warnings = _validate_profiles(manifest.get("profiles"))
     errors.extend(profile_errors)
     warnings.extend(profile_warnings)
+    defaults, default_errors = _validate_defaults(manifest.get("defaults"))
+    errors.extend(default_errors)
 
     normalized = {
         **manifest,
@@ -299,6 +384,7 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
         "capabilities": capabilities,
         "runtime_type": runtime_type,
         "max_context": max_context,
+        "defaults": defaults,
         "profiles": profiles,
     }
     return ManifestResult(normalized, errors, warnings)

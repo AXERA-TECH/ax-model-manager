@@ -1,6 +1,7 @@
 .venv/
 .secrets/
-docs/
+docs/*
+!docs/skills.md
 docs-internal/
 __pycache__/
 .pytest_cache/

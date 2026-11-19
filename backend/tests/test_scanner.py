@@ -123,6 +123,31 @@ def test_one_shot_task_manifest_is_not_service_startable(model_root: Path) -> No
     assert record["ready_to_start"] is False
 
 
+def test_model_summary_exposes_model_defaults(model_root: Path) -> None:
+    write_model_package(model_root / "defaults-model", manifest={
+        "schema_version": 1,
+        "id": "defaults-model",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "defaults": {
+            "system_prompt": "Answer concisely.",
+            "max_output_tokens": 2048,
+            "kv_cache_quantization": "E4M3",
+            "attention_quantization": "MXFP4",
+            "speculative": {"type": "draft-mtp", "enabled": False, "draft_n_max": 3},
+        },
+        "profiles": {"default": {"context": 4096}},
+    })
+
+    record = next(item for item in scan_models(model_root) if item["id"] == "defaults-model")
+
+    assert record["defaults"]["system_prompt"] == "Answer concisely."
+    assert record["defaults"]["speculative"]["draft_n_max"] == 3
+
+
 def test_user_override_manifest_makes_draft_ready(model_root: Path, tmp_path: Path) -> None:
     overrides = tmp_path / "overrides"
     overrides.mkdir()

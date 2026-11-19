@@ -70,6 +70,9 @@ if [[ -n "${TOKEN}" ]]; then
   check_body "authorized-models" "/api/v1/models" '"models"' "${auth[@]}"
   check_body "authorized-runtimes" "/api/v1/runtimes" 'reconciled_at' "${auth[@]}"
   check_body "authorized-audit" "/api/v1/audit" '"records"' "${auth[@]}"
+  check_body "authorized-resources-current" "/api/v1/resources" '"current"' "${auth[@]}"
+  check_body "authorized-resources-max" "/api/v1/resources" '"max"' "${auth[@]}"
+  check_body "authorized-dashboard-monitor" "/api/v1/dashboard" '"resource_monitor"' "${auth[@]}"
 
   code="$(status_code "/api/v1/models/missing" "${auth[@]}")"
   if [[ "${code}" == "404" ]]; then

@@ -296,7 +296,10 @@ function renderDeviceResources(resources = {}) {
         .map(zone => `${zone.type || zone.name}: ${formatNumber(zone.c)}°C`)
         .join('\n'),
     ),
-    summaryPill(`CPU ${formatNumber(load['1'])}`, `5m ${formatNumber(load['5'])} · 15m ${formatNumber(load['15'])}`),
+    summaryPill(
+      `CPU ${formatNumber(cpu.percent)}% / load ${formatNumber(load['1'])}`,
+      `load 5m ${formatNumber(load['5'])} · 15m ${formatNumber(load['15'])}`,
+    ),
     summaryPill(
       net.rx_mbps == null && net.tx_mbps == null ? 'NET —' : `NET ↓${formatNumber(net.rx_mbps)}/↑${formatNumber(net.tx_mbps)}`,
       [
@@ -656,6 +659,14 @@ async function openModelDialog(model) {
       ['Size', formatSize(detail.size_bytes)],
       ['Files', detail.file_count ?? '—'],
       ['Context', detail.max_context?.toLocaleString() || '—'],
+      ['Default output', detail.defaults?.max_output_tokens?.toLocaleString() || '—'],
+      ['KV cache', detail.defaults?.kv_cache_quantization || '—'],
+      ['Attention', detail.defaults?.attention_quantization || '—'],
+      ['Speculative', detail.defaults?.speculative?.enabled === undefined
+        ? '—'
+        : detail.defaults.speculative.enabled
+          ? detail.defaults.speculative.type || 'enabled'
+          : 'off'],
       ['Capabilities', (detail.capabilities || []).join(', ') || '—'],
       ['Profiles', (detail.profiles || []).join(', ') || '—'],
     ]) {
@@ -744,6 +755,7 @@ function currentLaunchPayload() {
     cache_ram: $('cache-ram').value === '' ? null : Number($('cache-ram').value),
     ctxcp: $('ctxcp').value === '' ? null : Number($('ctxcp').value),
     mtp: $('mtp').checked,
+    metrics: $('metrics').checked,
     sampling: currentSamplingPayload(),
   };
 }
@@ -764,6 +776,7 @@ function applyLaunchProfile(name) {
   $('cache-ram').value = profile.cache_ram ?? '';
   $('ctxcp').value = profile.ctxcp ?? '';
   $('mtp').checked = Boolean(profile.mtp);
+  $('metrics').checked = Boolean(profile.metrics);
   const sampling = profile.sampling || {};
   $('temperature').value = sampling.temperature ?? 0;
   $('top-k').value = sampling.top_k ?? 0;

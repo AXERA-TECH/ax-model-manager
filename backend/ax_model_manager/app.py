@@ -53,6 +53,7 @@ class StartRequest(BaseModel):
     cache_ram: int | None = Field(default=None, ge=0, le=1_000_000)
     ctxcp: int | None = Field(default=None, ge=0, le=128)
     mtp: bool | None = None
+    metrics: bool | None = None
     sampling: SamplingInput | None = None
 
 
@@ -82,6 +83,7 @@ class ProfileInput(BaseModel):
     cache_ram: int | None = Field(default=None, ge=0, le=1_000_000)
     ctxcp: int | None = Field(default=None, ge=0, le=128)
     mtp: bool | None = None
+    metrics: bool | None = None
     reasoning: str | None = Field(default=None, pattern="^(off|low|medium|high)$")
     image_max_tokens: int | None = Field(default=None, ge=0, le=100_000)
     port: int | None = Field(default=None, ge=1, le=65_535)
@@ -91,6 +93,64 @@ class ProfileInput(BaseModel):
 
 class ProfileDuplicateRequest(BaseModel):
     target: str = Field(min_length=1, max_length=128)
+
+
+RESOURCE_MAX_PATHS = {
+    "cpu_percent": ("cpu_percent",),
+    "cpu_load_1m": ("load", "1"),
+    "os_used_kb": ("os_memory", "used_kb"),
+    "cmm_used_kb": ("cmm", "used_kb"),
+    "rx_mbps": ("net", "rx_mbps"),
+    "tx_mbps": ("net", "tx_mbps"),
+    "npu_temp_c": ("npu_max_temp_c",),
+    "llama_rss_kb": ("llama", "rss_kb"),
+}
+
+
+def read_cpu_times(path: str = "/proc/stat") -> tuple[int, int] | None:
+    """Read aggregate CPU busy/total jiffies from procfs."""
+
+    try:
+        with open(path, encoding="ascii") as handle:
+            for line in handle:
+                if not line.startswith("cpu "):
+                    continue
+                values = line.split()[1:]
+                numbers = [int(value) for value in values[:8]]
+                if len(numbers) < 4:
+                    return None
+                user, nice, system, idle = numbers[:4]
+                iowait = numbers[4] if len(numbers) > 4 else 0
+                irq = numbers[5] if len(numbers) > 5 else 0
+                softirq = numbers[6] if len(numbers) > 6 else 0
+                steal = numbers[7] if len(numbers) > 7 else 0
+                busy = user + nice + system + irq + softirq + steal
+                total = busy + idle + iowait
+                return busy, total
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def cpu_percent_between(previous: tuple[int, int] | None, current: tuple[int, int] | None) -> float | None:
+    if not previous or not current:
+        return None
+    busy_delta = current[0] - previous[0]
+    total_delta = current[1] - previous[1]
+    if busy_delta < 0 or total_delta <= 0:
+        return None
+    return round(min(100.0, busy_delta / total_delta * 100.0), 2)
+
+
+def value_at_path(value: Any, path: tuple[str, ...]) -> float | None:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    if isinstance(current, bool) or not isinstance(current, (int, float)):
+        return None
+    return float(current)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -107,6 +167,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "systemd": SystemdRunManager(),
     }
     app.state.process_manager = managers.get(selected.process_backend)
+    app.state.resource_state = {
+        "lock": threading.Lock(),
+        "last_cpu_times": read_cpu_times(),
+        "max": {name: None for name in RESOURCE_MAX_PATHS},
+        "max_reset_at": None,
+        "sample_count": 0,
+    }
 
     def failure_code(message: str | None) -> str:
         text = str(message or "").lower()
@@ -567,9 +634,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "net": None,
                 "llama": None,
             }
+    app.state.read_board_resources = board_resources
+
+    def sample_resources(request: Request) -> dict[str, Any]:
+        """Sample board resources and update the process-local maxima."""
+
+        current = request.app.state.read_board_resources()
+        state = request.app.state.resource_state
+        with state["lock"]:
+            current_cpu_times = read_cpu_times()
+            cpu_percent = cpu_percent_between(state["last_cpu_times"], current_cpu_times)
+            state["last_cpu_times"] = current_cpu_times or state["last_cpu_times"]
+            current["cpu_percent"] = cpu_percent
+            if isinstance(current.get("cpu"), dict):
+                current["cpu"]["percent"] = cpu_percent
+
+            sampled_at = current.get("sampled_at") or time.time()
+            maxima = state["max"]
+            for name, path in RESOURCE_MAX_PATHS.items():
+                value = value_at_path(current, path)
+                if value is None:
+                    continue
+                previous = maxima.get(name)
+                if previous is None or value > previous:
+                    maxima[name] = value
+            state["sample_count"] += 1
+            return {
+                "current": current,
+                "max": dict(maxima),
+                "sampled_at": sampled_at,
+                "sample_count": state["sample_count"],
+                "max_reset_at": state["max_reset_at"],
+                "sampling": "on-request",
+            }
 
     def resource_preflight(request: Request, force: bool = False) -> dict[str, Any]:
-        resources = board_resources()
+        resources = sample_resources(request)["current"]
         if not resources.get("available"):
             if request.app.state.settings.process_backend == "systemd":
                 raise HTTPException(
@@ -794,6 +894,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             argv.extend(["-t", str(profile["threads"])])
         if "http_threads" in profile:
             argv.extend(["--threads-http", str(profile["http_threads"])])
+        if profile.get("metrics") is True:
+            argv.append("--metrics")
 
         if is_voxcpm2:
             argv.extend(["--voxcpm2-acoustic", str(acoustic)])
@@ -1213,6 +1315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.app.state.runtime_reconciliation = reconciliation
         active_jobs = request.app.state.jobs.active()
         runtime_jobs = [job for job in active_jobs if job.action == "start"]
+        resource_monitor = sample_resources(request)
         return {
             "version": __version__,
             "config": request.app.state.settings.public_dict(),
@@ -1223,8 +1326,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "active_job_count": len(runtime_jobs),
             "configured_model_limit": request.app.state.settings.max_running_models,
             "active_jobs": [job.public() for job in active_jobs],
-            "resources": board_resources(),
+            "resources": resource_monitor["current"],
+            "resource_monitor": resource_monitor,
             "runtime_reconciliation": reconciliation,
+        }
+
+    @app.get("/api/v1/resources", dependencies=[Depends(require_auth)])
+    async def resources(request: Request) -> dict[str, Any]:
+        return sample_resources(request)
+
+    @app.post("/api/v1/resources/max/reset", dependencies=[Depends(require_auth)])
+    async def reset_resource_maxima(request: Request) -> dict[str, Any]:
+        state = request.app.state.resource_state
+        with state["lock"]:
+            cleared = dict(state["max"])
+            state["max"] = {name: None for name in RESOURCE_MAX_PATHS}
+            state["max_reset_at"] = time.time()
+            state["sample_count"] = 0
+        return {
+            "cleared_max": cleared,
+            **sample_resources(request),
         }
 
     @app.post(

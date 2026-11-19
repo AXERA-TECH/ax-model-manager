@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from ax_model_manager.manifest import (
     check_artifact,
@@ -160,3 +161,69 @@ def test_validate_manifest_rejects_unknown_profile_fields(tmp_path: Path) -> Non
     result = validate_manifest(json.loads((directory / "model.json").read_text()), directory)
     assert not result.valid
     assert any("unknown keys" in item for item in result.errors)
+
+
+def test_validate_manifest_accepts_model_defaults_and_metrics_profile(tmp_path: Path) -> None:
+    directory = write_model_package(tmp_path / "fixture-model", manifest={
+        "schema_version": 1,
+        "id": "fixture-model",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "defaults": {
+            "system_prompt": "You are a concise assistant.",
+            "max_output_tokens": 4096,
+            "kv_cache_quantization": "E4M3",
+            "attention_quantization": "MXFP4",
+            "speculative": {
+                "type": "draft-mtp",
+                "enabled": False,
+                "draft_n_max": 3,
+            },
+        },
+        "profiles": {"default": {"context": 4096, "metrics": True}},
+    })
+
+    result = validate_manifest(
+        json.loads((directory / "model.json").read_text(encoding="utf-8")),
+        directory,
+    )
+
+    assert result.valid
+    assert result.manifest["defaults"]["max_output_tokens"] == 4096
+    assert result.manifest["defaults"]["speculative"]["draft_n_max"] == 3
+    assert result.manifest["profiles"]["default"]["metrics"] is True
+
+
+def test_validate_manifest_rejects_invalid_defaults(tmp_path: Path) -> None:
+    directory = write_model_package(tmp_path / "fixture-model", manifest={
+        "schema_version": 1,
+        "id": "fixture-model",
+        "engine": "llama-server",
+        "artifacts": {
+            "binary": "bin/llama-server",
+            "model": "fixture.gguf",
+        },
+        "defaults": {
+            "max_output_tokens": True,
+            "kv_cache_quantization": "bad value",
+            "speculative": {"enabled": "yes", "unknown": 1},
+            "unknown": "value",
+        },
+        "profiles": {"default": {"context": 4096, "metrics": "yes"}},
+    })
+
+    result = validate_manifest(
+        json.loads((directory / "model.json").read_text(encoding="utf-8")),
+        directory,
+    )
+
+    assert not result.valid
+    assert "defaults.max_output_tokens must be an integer between 1 and 1000000" in result.errors
+    assert "defaults.kv_cache_quantization must match [A-Za-z0-9_.:+-] and contain 1-64 characters" in result.errors
+    assert "defaults.speculative.enabled must be boolean" in result.errors
+    assert "defaults.speculative has unknown keys: unknown" in result.errors
+    assert "defaults has unknown keys: unknown" in result.errors
+    assert "profiles.default.metrics must be boolean" in result.errors

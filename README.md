@@ -46,6 +46,7 @@ Model Manager 只做管理平面，不做推理数据面：
 │ ├─ Job manager             │
 │ ├─ Process/systemd backend │
 │ ├─ Audit/log store         │
+│ ├─ Resource monitor        │
 │ └─ Static Web Admin UI     │
 └───────┬──────────────┬─────┘
         │              │
@@ -85,6 +86,7 @@ Chat / Vision / OCR / ASR / TTS clients
 - 启动前可预览实际 llama-server 命令。
 - 支持 context、batch、ubatch、cache RAM、ctxcp、MTP、reasoning、端口、
   image token 上限、采样参数、线程、HTTP 线程和安全白名单环境变量。
+- 支持为 llama-server 追加 `--metrics`，暴露 Prometheus 累计指标。
 - 常用 context 档位：4K / 8K / 16K / 32K / 64K / 128K / 256K。
 
 ### 生命周期管理
@@ -96,6 +98,14 @@ Chat / Vision / OCR / ASR / TTS clients
 - 停止前通过 `/slots` 做 IN USE guard。
 - Manager 重启后可 reconcile runtime，支持孤儿 runtime adopt / stop。
 - job 状态持久化，服务重启后仍能查看历史。
+
+### 资源观测
+
+- `GET /api/v1/resources` 提供当前板卡资源快照。
+- CPU percent 通过 `/proc/stat` 两次采样差值计算。
+- 提供 CPU load、OS used、CMM used、RX/TX、NPU 温度、llama RSS 的进程内最大值。
+- `POST /api/v1/resources/max/reset` 只清除 max，不改变当前值。
+- Dashboard 继续返回 `resources` 当前快照，并额外包含 `resource_monitor`。
 
 ### Web Admin UI
 
@@ -155,6 +165,17 @@ Chat / Vision / OCR / ASR / TTS clients
   "capabilities": ["text", "image"],
   "runtime_type": "service",
   "max_context": 32768,
+  "defaults": {
+    "system_prompt": "You are a concise assistant.",
+    "max_output_tokens": 4096,
+    "kv_cache_quantization": "E4M3",
+    "attention_quantization": "MXFP4",
+    "speculative": {
+      "type": "draft-mtp",
+      "enabled": false,
+      "draft_n_max": 3
+    }
+  },
   "profiles": {
     "default": {
       "context": 4096,
@@ -163,6 +184,7 @@ Chat / Vision / OCR / ASR / TTS clients
       "cache_ram": 0,
       "ctxcp": 0,
       "mtp": false,
+      "metrics": false,
       "reasoning": "off",
       "sampling": {
         "temperature": 0
@@ -177,6 +199,8 @@ Chat / Vision / OCR / ASR / TTS clients
 - `id` 只能使用小写字母、数字、`.`、`_`、`-`。
 - artifacts 路径必须位于模型目录内。
 - `runtime_type=task` 的模型不能作为长驻 service 启动。
+- `defaults` 是给上位机展示和生成请求用的模型包默认值，不是任意 shell 配置。
+- `metrics=true` 会为 llama-server 追加 `--metrics`。
 
 ## 本地开发
 
@@ -388,6 +412,7 @@ curl -X POST "$MANAGER/api/v1/models/<model-id>/preview" \
     "batch": 4096,
     "ubatch": 4096,
     "mtp": false,
+    "metrics": false,
     "sampling": {"temperature": 0}
   }'
 ```
@@ -404,6 +429,7 @@ curl -X POST "$MANAGER/api/v1/models/<model-id>/start" \
     "batch": 4096,
     "ubatch": 4096,
     "mtp": false,
+    "metrics": false,
     "sampling": {"temperature": 0}
   }'
 ```
@@ -472,11 +498,48 @@ predicted_per_token_ms
 ### 7. 查看资源状态
 
 ```bash
+curl -H "Authorization: Bearer $TOKEN" "$MANAGER/api/v1/resources"
+```
+
+返回当前 OS/CMM、CPU percent、load、NPU 温度、磁盘、网络、llama 进程，以及
+Manager 进程内维护的资源最大值：
+
+```json
+{
+  "current": {
+    "cpu_percent": 3.25,
+    "os_memory": {},
+    "cmm": {},
+    "net": {},
+    "npu": {}
+  },
+  "max": {
+    "cpu_percent": 3.25,
+    "os_used_kb": 1,
+    "cmm_used_kb": 1,
+    "rx_mbps": 0.0,
+    "tx_mbps": 0.0,
+    "npu_temp_c": 40.0,
+    "llama_rss_kb": 1
+  },
+  "sample_count": 1,
+  "sampling": "on-request"
+}
+```
+
+清除最大值：
+
+```bash
+curl -X POST "$MANAGER/api/v1/resources/max/reset" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+聚合视图仍可使用：
+
+```bash
 curl -H "Authorization: Bearer $TOKEN" \
   "$MANAGER/api/v1/dashboard"
 ```
-
-返回模型统计、active jobs、OS/CMM、NPU 温度、CPU、磁盘、网络和 llama 进程状态。
 
 ### 8. 停止模型
 
@@ -533,6 +596,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 | GET | `/api/v1/jobs/{job_id}/logs` | Job 日志 |
 | GET | `/api/v1/audit` | 审计记录 |
 | GET | `/api/v1/dashboard` | 聚合 dashboard 与资源快照 |
+| GET | `/api/v1/resources` | 当前资源、CPU percent 和资源最大值 |
+| POST | `/api/v1/resources/max/reset` | 清除资源最大值 |
 
 机器可读接口定义：
 
@@ -569,8 +634,7 @@ Release 包不包含 `.git`、`.venv`、`dist`、`.secrets` 和本地 fixture。
 - 不负责模型下载或 Hugging Face 差异化更新。
 - 不代理 OpenAI 推理流量。
 - 没有 NPU utilization；当前提供温度、频率、进程和内存状态。
-- 没有 CPU percent；当前提供 loadavg 和频率。
-- 资源面板是当前快照，暂无 max / reset。
+- 资源 max 保存在 Manager 进程内，Manager 重启后重建。
 - llama-server 当前由 Manager 固定以 `-np 1` 启动，多个请求会在同一服务内排队。
 - Manager 的多模型并行不等价于同一个模型的多 batch 并行推理。
 - ViT 单独耗时未从 llama-server response 中拆出。
@@ -592,6 +656,8 @@ scripts/
 ```
 
 上位机开发同事可按本文的 “目标与边界”、“API 调用方式” 和 “当前限制” 章节对接。
+更完整的接入流程、调用示例和 agent 开发守则见
+[`docs/skills.md`](docs/skills.md)。
 
 ## 版本
 
