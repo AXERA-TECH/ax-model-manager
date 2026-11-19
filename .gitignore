@@ -1,5 +1,7 @@
 .venv/
 .secrets/
+docs/
+docs-internal/
 __pycache__/
 .pytest_cache/
 *.py[cod]

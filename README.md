@@ -552,9 +552,8 @@ AX_MODEL_MANAGER_TOKEN="$TOKEN" \
 
 Release 包不包含 `.git`、`.venv`、`dist`、`.secrets` 和本地 fixture。
 
-日常真板生命周期测试默认使用 `Qwen3.5-2B-AX8860-llama.cpp`；35B 只用于内存、
-长上下文、性能或客户指定专项，不作为默认回归模型。详见
-`docs/测试策略-20261118.md`。
+日常真板生命周期测试默认使用小型文本模型；大模型只用于内存、长上下文、性能或
+客户指定专项，不作为默认回归模型。
 
 ## 安全说明
 
@@ -590,11 +589,9 @@ scripts/
   uninstall.sh        卸载
   package.sh          打包
   regression.sh       API/UI 冒烟回归
-docs/
-  开发与测试记录、测试策略、SE 需求差距分析
 ```
 
-上位机开发同事建议先阅读 `docs/上位机对接指南.md`。
+上位机开发同事可按本文的 “目标与边界”、“API 调用方式” 和 “当前限制” 章节对接。
 
 ## 版本
 
