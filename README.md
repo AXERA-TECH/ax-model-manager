@@ -598,3 +598,7 @@ docs/
 ## 版本
 
 当前版本见 `VERSION`，发布历史见 `RELEASES.md`。
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
