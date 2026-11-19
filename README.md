@@ -22,7 +22,8 @@ Model Manager 只做管理平面，不做推理数据面：
 
 ### 核心原则
 
-1. 默认模型根目录为 `/mnt/models`，一个模型一个目录，路径可配置。
+1. 模型根目录可配置，一个模型一个目录。文档中的 `<模型文件夹>` 是脱敏占位符，
+   部署时替换为实际路径，不要把真实路径提交到公开文档。
 2. 前端和上位机不提交任意 shell 命令，只提交结构化 JSON Profile。
 3. llama-server 由 `ax-model-*` systemd transient unit 托管，Manager 重启不影响推理。
 4. 停止、重启、切换前检查 llama-server `/slots`，避免误杀正在处理的请求。
@@ -124,7 +125,7 @@ Chat / Vision / OCR / ASR / TTS clients
 推荐结构：
 
 ```text
-/mnt/models/
+<模型文件夹>/
 └── My-Model-AX8860-llama.cpp/
     ├── model.json
     ├── bin/
@@ -214,7 +215,7 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 
 1. AX8860 / AX8860P 板卡可运行 Python 3.10+。
 2. 使用 systemd。
-3. 模型包已放在配置的 model root，例如 `/mnt/models`。
+3. 模型包已放在配置的模型根目录，例如 `<模型文件夹>`。
 4. tempmon agent 已在板端 `8080` 端口运行。systemd 控制模式下，启动前资源检查依赖它。
 5. llama-server 可执行文件、GGUF、mmproj、kernels 等由模型包自带。
 
@@ -224,7 +225,7 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 
 ```bash
 ./scripts/install.sh \
-  --model-root /mnt/models \
+  --model-root "<模型文件夹>" \
   --data-dir /var/lib/axera-model-manager
 ```
 
@@ -238,7 +239,7 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 
 ```bash
 ./scripts/install.sh \
-  --model-root /mnt/models \
+  --model-root "<模型文件夹>" \
   --data-dir /var/lib/axera-model-manager \
   --token "<your-token>"
 ```
@@ -306,7 +307,7 @@ http://<board-ip>:18090/docs
 
 ```json
 {
-  "model_root": "/mnt/models",
+  "model_root": "<模型文件夹>",
   "manager_port": 18090,
   "llama_port_min": 18080,
   "llama_port_max": 18089,
