@@ -11,6 +11,8 @@ tar -czf "${OUTPUT}" \
   --exclude='.git' \
   --exclude='.venv' \
   --exclude='dist' \
+  --exclude='docs' \
+  --exclude='docs-internal' \
   --exclude='__pycache__' \
   --exclude='.pytest_cache' \
   --exclude='*.egg-info' \
