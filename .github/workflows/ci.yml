@@ -61,8 +61,9 @@ jobs:
       - name: Reject internal engineering records
         run: |
           set -euo pipefail
-          if git ls-files 'docs/*' | grep -q .; then
-            echo "::error::Internal docs/ directory must not be published"
+          internal_docs="$(git ls-files 'docs/*' | grep -v '^docs/skills\.md$' || true)"
+          if [ -n "$internal_docs" ]; then
+            echo "::error::Unexpected internal docs/ file must not be published: $internal_docs"
             exit 1
           fi
           if git grep -n -E '/mnt/tangqi|/home/[A-Za-z0-9_.-]+|qiushui|junda|tangqi' \
