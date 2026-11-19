@@ -97,7 +97,8 @@ jobs:
 
           ready=0
           for _ in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18090/health | grep -q '"status":"ok"'; then
+            health_body="$(curl --fail --silent http://127.0.0.1:18090/health || true)"
+            if grep -q '"status":"ok"' <<<"$health_body"; then
               ready=1
               break
             fi
@@ -109,8 +110,10 @@ jobs:
             exit 1
           fi
 
-          curl --fail --silent http://127.0.0.1:18090/ | grep -q 'AXERA Model Manager'
-          curl --fail --silent http://127.0.0.1:18090/ui/app.js | grep -q 'renderDeviceResources'
+          curl --fail --silent http://127.0.0.1:18090/ -o /tmp/ax-model-manager-index.html
+          curl --fail --silent http://127.0.0.1:18090/ui/app.js -o /tmp/ax-model-manager-app.js
+          grep -q 'AXERA Model Manager' /tmp/ax-model-manager-index.html
+          grep -q 'renderDeviceResources' /tmp/ax-model-manager-app.js
           AX_MODEL_MANAGER_TOKEN=local-dev-token \
             ./scripts/regression.sh http://127.0.0.1:18090
 
