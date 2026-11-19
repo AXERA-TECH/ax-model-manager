@@ -94,6 +94,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .device-bar-row span { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:10px; margin-bottom:3px; }
 .device-bar-row b { color:var(--text); font-weight:600; white-space:nowrap; }
 .api-panel { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.demo-panel { margin-bottom:12px; }
+.demo-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.demo-message { margin-top:-3px; }
+.demo-message code { overflow-wrap:anywhere; }
+.demo-frame { display:block; width:100%; height:min(68vh,680px); margin-top:9px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
 .api-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; align-items: stretch; }
 .api-box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; }
 .api-box span { display: block; color: var(--muted); font-size: 10px; margin-bottom: 5px; }

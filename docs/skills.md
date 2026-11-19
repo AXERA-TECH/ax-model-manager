@@ -44,6 +44,7 @@ manifest / profile 管理
 | Chat / Vision / OCR / ASR / TTS 推理 | llama-server |
 | 单请求 usage / timings | llama-server final response |
 | Prometheus 累计指标 | llama-server `/metrics` |
+| 快速人工聊天冒烟 | Manager 内嵌 Lite WebUI，实际请求仍直连 llama-server |
 
 ## 3. 基本变量与认证
 

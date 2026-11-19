@@ -11,6 +11,7 @@ let modelRows = [];
 let launchModel = null;
 let launchMode = 'start';
 let launchManifest = null;
+let currentDemoUrl = '';
 const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
@@ -97,6 +98,17 @@ function errorText(detail) {
 function publicRuntimeOrigin(port) {
   const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
   return `${protocol}//${location.hostname}:${port}`;
+}
+
+function liteWebUiUrl(activeModel) {
+  const active = activeModel?.active_job;
+  if (!active?.port) return '';
+
+  const url = new URL(`${location.protocol}//${location.hostname}:18100/`);
+  url.searchParams.set('api', publicRuntimeOrigin(active.port));
+  const modelId = active.runtime_models?.[0] || activeModel.id;
+  if (modelId) url.searchParams.set('model', modelId);
+  return url.toString();
 }
 
 async function copyText(text, button) {
@@ -204,6 +216,43 @@ function renderActiveApi(models) {
       apiBox(`Model ID · ${activeModel.name}`, modelNode, [copyButton(modelId, 'Copy model ID')]),
       apiBox(`Chat request · ${activeModel.name}`, requestNode, [copyButton(curl, 'Copy curl')]),
     );
+  }
+}
+
+function renderLiteWebUi(models) {
+  const frame = $('lite-webui-frame');
+  const statePill = $('lite-webui-state');
+  const openLink = $('lite-webui-open');
+  const reloadButton = $('lite-webui-reload');
+  const activeModels = models.filter(model => model.active_job?.port);
+  const desiredUrl = liteWebUiUrl(activeModels[0]);
+
+  if (!desiredUrl) {
+    currentDemoUrl = '';
+    frame.classList.add('hidden');
+    frame.removeAttribute('src');
+    openLink.classList.add('hidden');
+    reloadButton.disabled = true;
+    statePill.className = 'pill';
+    statePill.textContent = 'No model running';
+    return;
+  }
+
+  const activeModel = activeModels[0];
+  const active = activeModel.active_job;
+  const state = active.state || 'unknown';
+  statePill.className = `pill ${stateClass(state)}`;
+  statePill.textContent = activeModels.length === 1
+    ? `${activeModel.name} · ${state}`
+    : `${activeModels.length} runtimes · first ${activeModel.name}`;
+
+  openLink.classList.remove('hidden');
+  openLink.href = desiredUrl;
+  reloadButton.disabled = false;
+  frame.classList.remove('hidden');
+  if (currentDemoUrl !== desiredUrl) {
+    currentDemoUrl = desiredUrl;
+    frame.src = desiredUrl;
   }
 }
 
@@ -625,6 +674,7 @@ async function refresh() {
     renderRuntimeReconciliation(dashboard.runtime_reconciliation || {});
     renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
+    renderLiteWebUi(models.models);
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
   } catch (error) {
@@ -1021,6 +1071,10 @@ $('theme-toggle').onclick = () => {
 };
 $('show-invalid').onchange = () => renderModels(modelRows);
 $('save-model-limit').onclick = saveModelLimit;
+$('lite-webui-reload').onclick = () => {
+  const frame = $('lite-webui-frame');
+  if (currentDemoUrl) frame.src = currentDemoUrl;
+};
 $('profile').onchange = event => applyLaunchProfile(event.target.value);
 $('launch-submit').onclick = submitLaunchDialog;
 $('launch-save-profile').onclick = saveLaunchProfile;

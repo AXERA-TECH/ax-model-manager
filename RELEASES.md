@@ -1,5 +1,14 @@
 # Releases
 
+## 0.3.1 — 2026-11-19
+
+Web Admin UI demo integration.
+
+- Embed an optional Lite WebUI runtime smoke test
+- Generate Lite WebUI launch links with endpoint and model preselection
+- Add a public Web Admin UI screenshot to the README
+- Document the optional Lite WebUI deployment boundary
+
 ## 0.3.0 — 2026-11-19
 
 Third-party integration and resource-monitoring release.

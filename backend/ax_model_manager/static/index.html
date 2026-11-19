@@ -95,6 +95,26 @@
       </div>
     </section>
 
+    <section class="panel demo-panel" id="lite-webui-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Lite WebUI Demo</h2>
+          <p class="panel-subtitle">Optional browser smoke test for the active runtime</p>
+        </div>
+        <div class="demo-actions">
+          <span id="lite-webui-state" class="pill">No model running</span>
+          <a id="lite-webui-open" class="button-link" href="#" target="_blank" rel="noopener">Open</a>
+          <button id="lite-webui-reload" type="button" class="small">Reload</button>
+        </div>
+      </div>
+      <p class="message demo-message">
+        Lite WebUI is a separate static frontend. Deploy it at
+        <code>http://&lt;board-ip&gt;:18100/</code>; Model Manager links and embeds it, but does
+        not bundle or proxy its application files.
+      </p>
+      <iframe id="lite-webui-frame" class="demo-frame" title="Lite WebUI model demo"></iframe>
+    </section>
+
     <section class="layout">
       <div class="panel models-panel">
         <div class="panel-head">

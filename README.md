@@ -116,8 +116,28 @@ Chat / Vision / OCR / ASR / TTS clients
 - 每个模型的启动参数配置。
 - Jobs、日志尾部、错误高亮、日志下载。
 - Runtime 和 OpenAI-compatible endpoint 信息。
+- 可选 Lite WebUI 快速聊天演示。
 - Audit 记录。
 - 明暗主题。
+
+![AXERA Model Manager Web Admin UI](assets/web-admin-ui.png)
+
+#### Lite WebUI 快速演示
+
+Web Admin UI 可以嵌入 Lite WebUI，用当前 running runtime 快速做一次真实
+OpenAI-compatible 聊天冒烟测试。Manager 只负责生成链接：
+
+```text
+http://<board-ip>:18100/?api=http://<board-ip>:18080&model=<runtime-model-id>
+```
+
+Lite WebUI 支持 `api` 和 `model` URL 参数，被打开后会自动选中该 endpoint 和模型。
+Lite WebUI 是独立静态前端，Manager 不打包、不代理、不保存它的浏览器数据。如果
+未部署 Lite WebUI，请单独把它安装在：
+
+```text
+http://<board-ip>:18100/
+```
 
 ### OCR / ASR / TTS 预设
 

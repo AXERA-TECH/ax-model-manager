@@ -93,6 +93,9 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert 'id="metric-cmm"' not in index.text
         assert 'id="device-grid"' in index.text
         assert 'id="device-status"' in index.text
+        assert 'id="lite-webui-panel"' in index.text
+        assert 'id="lite-webui-frame"' in index.text
+        assert 'id="lite-webui-open"' in index.text
         assert 'id="max-running-models"' in index.text
         assert 'id="save-model-limit"' in index.text
         assert "height: var(--model-list-height)" in (
@@ -115,6 +118,10 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert 'id="auto-log"' in index.text
         assert 'id="follow-log"' in index.text
         assert client.get("/ui/app.js").status_code == 200
+        app_js = client.get("/ui/app.js").text
+        assert "searchParams.set('api'" in app_js
+        assert "searchParams.set('model'" in app_js
+        assert "renderLiteWebUi" in app_js
         assert client.get("/ui/../config.py").status_code == 404
 
 
