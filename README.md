@@ -676,7 +676,10 @@ scripts/
 ```
 
 上位机开发同事可按本文的 “目标与边界”、“API 调用方式” 和 “当前限制” 章节对接。
-更完整的接入流程、调用示例和 agent 开发守则见
+第三方 UI / 上位机团队优先阅读
+[`docs/third-party-ui-integration.md`](docs/third-party-ui-integration.md)。
+
+更偏项目维护者和 coding agent 的架构上下文、开发守则见
 [`docs/skills.md`](docs/skills.md)。
 
 ## 版本
