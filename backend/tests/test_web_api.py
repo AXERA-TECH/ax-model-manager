@@ -98,6 +98,12 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert 'id="lite-webui-open"' in index.text
         assert 'id="max-running-models"' in index.text
         assert 'id="save-model-limit"' in index.text
+        assert 'id="settings"' in index.text
+        assert 'id="settings-dialog"' in index.text
+        assert 'id="model-root-input"' in index.text
+        assert 'id="validate-model-root"' in index.text
+        assert 'id="save-model-root"' in index.text
+        assert "Refresh / Scan" in index.text
         assert "height: var(--model-list-height)" in (
             Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
         ).read_text(encoding="utf-8")

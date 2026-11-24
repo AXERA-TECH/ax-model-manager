@@ -212,6 +212,7 @@ curl -H "Authorization: Bearer $TOKEN" "$MANAGER/api/v1/config"
 
 ```text
 manager_port
+model_root
 llama_port_min / llama_port_max
 max_running_models
 read_only
@@ -222,7 +223,31 @@ allowed_origins
 
 该接口不返回 token。
 
-### 4.3 修改最大并行模型数
+### 4.3 修改模型根目录 / 最大并行模型数
+
+修改模型根目录：
+
+```bash
+curl -X PUT "$MANAGER/api/v1/config" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model_root": "/mnt/tangqi"}'
+```
+
+路径必须是存在的绝对目录，不能是 `/`、Manager data_dir 或其子目录。
+有运行中的模型时返回 409，需先停止模型。
+
+保存后可以显式重新扫描：
+
+```bash
+curl -X POST "$MANAGER/api/v1/models/scan" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+返回发现的模型数量、可启动数量和扫描错误。`GET /api/v1/models` 也会扫描，
+`POST /api/v1/models/scan` 只是让“刷新本地模型”的语义更明确。
+
+修改最大并行模型数：
 
 ```bash
 curl -X PUT "$MANAGER/api/v1/config" \
@@ -877,7 +902,9 @@ curl -X POST "$MANAGER/api/v1/runtimes/$RUNTIME_ID/stop" \
 |---|---|---|
 | GET | `/health` | 公开健康检查 |
 | GET | `/api/v1/config` | 读取配置 |
-| PUT | `/api/v1/config` | 修改最大并行模型数 |
+| PUT | `/api/v1/config` | 修改模型根目录 / 最大并行模型数 |
+| POST | `/api/v1/config/validate` | 校验模型根目录 |
+| POST | `/api/v1/models/scan` | 重新扫描模型根目录 |
 | GET | `/api/v1/models` | 模型列表 |
 | GET | `/api/v1/models/{id}` | 模型详情 |
 | GET | `/api/v1/models/{id}/manifest` | manifest |

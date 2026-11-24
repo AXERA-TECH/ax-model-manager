@@ -58,7 +58,12 @@ class StartRequest(BaseModel):
 
 
 class ConfigUpdateRequest(BaseModel):
-    max_running_models: int = Field(ge=1, le=10)
+    model_root: str | None = Field(default=None, min_length=1)
+    max_running_models: int | None = Field(default=None, ge=1, le=10)
+
+
+class ConfigValidateRequest(BaseModel):
+    model_root: str = Field(min_length=1)
 
 
 class StopRequest(BaseModel):
@@ -89,6 +94,39 @@ class ProfileInput(BaseModel):
     port: int | None = Field(default=None, ge=1, le=65_535)
     startup_timeout_seconds: int | None = Field(default=None, ge=1, le=86_400)
     sampling: SamplingInput | None = None
+
+
+def resolve_model_root(
+    value: str,
+    data_dir: Path,
+) -> tuple[Path | None, list[str]]:
+    """Validate a user-provided model root without trusting arbitrary paths."""
+
+    errors: list[str] = []
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ["model_root is empty"]
+
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        errors.append("model_root must be an absolute path")
+
+    resolved = candidate.resolve(strict=False)
+    data = data_dir.expanduser().resolve(strict=False)
+    if str(resolved) == "/":
+        errors.append("model_root cannot be /")
+    if resolved == data or data in resolved.parents or resolved in data.parents:
+        errors.append("model_root cannot overlap the manager data directory")
+
+    if not errors:
+        if not resolved.exists():
+            errors.append(f"model_root does not exist: {resolved}")
+        elif not resolved.is_dir():
+            errors.append(f"model_root is not a directory: {resolved}")
+        elif not os.access(resolved, os.R_OK):
+            errors.append(f"model_root is not readable: {resolved}")
+
+    return resolved, errors
 
 
 class ProfileDuplicateRequest(BaseModel):
@@ -248,6 +286,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "models": rows,
         }
 
+    @app.post("/api/v1/models/scan", dependencies=[Depends(require_auth)])
+    async def scan_model_root(request: Request) -> dict[str, Any]:
+        """Rescan the configured model root without changing it."""
+
+        try:
+            records = scan_models(
+                Path(request.app.state.settings.model_root),
+                Path(request.app.state.settings.data_dir) / "models",
+            )
+        except ModelRootError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        errors = [
+            {"id": item["id"], "errors": item["errors"]}
+            for item in records
+            if item["errors"]
+        ]
+        return {
+            "model_root": str(request.app.state.settings.model_root),
+            "count": len(records),
+            "valid_count": sum(1 for item in records if item["valid"]),
+            "ready_to_start_count": sum(
+                1 for item in records if item["ready_to_start"]
+            ),
+            "errors": errors,
+            "scanned_at": time.time(),
+        }
+
     def find_model(model_id: str) -> dict[str, Any]:
         try:
             records = scan_models(
@@ -306,16 +371,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not request.app.state.settings.enable_control:
             raise HTTPException(status_code=404, detail="control endpoints are disabled")
 
+    @app.post(
+        "/api/v1/config/validate",
+        dependencies=[Depends(require_auth)],
+    )
+    async def validate_config(
+        body: ConfigValidateRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        data_dir = Path(request.app.state.settings.data_dir)
+        model_root, errors = resolve_model_root(body.model_root, data_dir)
+        payload: dict[str, Any] = {
+            "valid": not errors,
+            "model_root": str(model_root) if model_root is not None else body.model_root,
+            "errors": errors,
+        }
+        if not errors and model_root is not None:
+            try:
+                records = scan_models(model_root, data_dir / "models")
+                payload.update({
+                    "model_count": len(records),
+                    "valid_count": sum(1 for item in records if item["valid"]),
+                    "ready_to_start_count": sum(
+                        1 for item in records if item["ready_to_start"]
+                    ),
+                })
+            except ModelRootError as exc:
+                payload["valid"] = False
+                payload["errors"] = [str(exc)]
+        return payload
+
     @app.put(
         "/api/v1/config",
         dependencies=[Depends(require_auth), Depends(require_control)],
     )
     async def update_config(body: ConfigUpdateRequest, request: Request) -> dict[str, Any]:
+        if body.model_root is None and body.max_running_models is None:
+            raise HTTPException(
+                status_code=400,
+                detail="provide model_root or max_running_models",
+            )
+
         active_runtimes = [
             job for job in request.app.state.jobs.active()
             if job.action == "start"
         ]
-        if body.max_running_models < len(active_runtimes):
+        if (
+            body.max_running_models is not None
+            and body.max_running_models < len(active_runtimes)
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -324,12 +428,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             )
 
+        new_model_root: Path | None = None
+        if body.model_root is not None:
+            candidate, errors = resolve_model_root(
+                body.model_root,
+                Path(app.state.settings.data_dir),
+            )
+            if errors or candidate is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"message": "invalid model_root", "errors": errors},
+                )
+            current_root = Path(app.state.settings.model_root).expanduser().resolve(
+                strict=False
+            )
+            if candidate != current_root and active_runtimes:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "stop running models before changing model_root",
+                        "active_runtime_count": len(active_runtimes),
+                    },
+                )
+            new_model_root = candidate
+
         config_path = Path(app.state.settings.config_path)
         try:
             values = {}
             if config_path.is_file():
                 values = json.loads(config_path.read_text(encoding="utf-8"))
-            values["max_running_models"] = body.max_running_models
+            if new_model_root is not None:
+                values["model_root"] = str(new_model_root)
+            if body.max_running_models is not None:
+                values["max_running_models"] = body.max_running_models
             config_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = config_path.with_suffix(config_path.suffix + ".tmp")
             temporary.write_text(
@@ -344,14 +475,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=503, detail=f"cannot save config: {exc}") from exc
 
-        app.state.settings = replace(
-            app.state.settings,
-            max_running_models=body.max_running_models,
-        )
+        replacements: dict[str, Any] = {}
+        if new_model_root is not None:
+            replacements["model_root"] = new_model_root
+        if body.max_running_models is not None:
+            replacements["max_running_models"] = body.max_running_models
+        app.state.settings = replace(app.state.settings, **replacements)
         audit(
             request,
             "config_updated",
-            max_running_models=body.max_running_models,
+            model_root=(
+                str(new_model_root)
+                if new_model_root is not None
+                else str(app.state.settings.model_root)
+            ),
+            max_running_models=app.state.settings.max_running_models,
             config_path=str(config_path),
         )
         return app.state.settings.public_dict()

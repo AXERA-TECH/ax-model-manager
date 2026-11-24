@@ -166,6 +166,14 @@ html[data-theme="light"] dialog::backdrop { background: rgba(31,35,40,.3); }
 #log-content .log-line.error { color:var(--bad); background:color-mix(in srgb,var(--bad) 12%,transparent); }
 #log-content .log-line.warning { color:var(--warn); }
 #launch-dialog { width:min(760px,calc(100vw - 32px)); height:min(640px,calc(100vh - 32px)); }
+.settings-dialog { width:min(680px,calc(100vw - 32px)); height:auto; }
+.settings-body { display:grid; gap:9px; }
+.settings-field { display:grid; gap:5px; color:var(--muted); font-size:11px; }
+.settings-field input { width:100%; color:var(--text); font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.settings-actions { margin-top:4px; }
+.settings-result { border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:var(--panel-2); color:var(--text); font-size:12px; white-space:pre-wrap; }
+.settings-result.error { border-color:color-mix(in srgb,var(--bad) 50%,transparent); color:var(--bad); }
+.settings-result.ok { border-color:color-mix(in srgb,var(--ok) 50%,transparent); }
 .launch-body { height:calc(100% - 62px); overflow-y:auto; padding-right:3px; }
 .warning-check { margin-top:14px; padding:9px; border:1px solid color-mix(in srgb,var(--warn) 45%,transparent); border-radius:7px; }
 .profile-tools { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }

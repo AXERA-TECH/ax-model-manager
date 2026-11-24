@@ -74,6 +74,87 @@ def test_update_config_persists_model_limit(model_root: Path, tmp_path: Path) ->
         assert client.get("/api/v1/dashboard").json()["configured_model_limit"] == 2
 
 
+def test_update_config_persists_model_root_and_rescans(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    new_root = tmp_path / "new-models"
+    new_root.mkdir()
+    write_model_package(new_root / "other-model")
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.put("/api/v1/config", json={"model_root": str(new_root)})
+        assert response.status_code == 200
+        assert response.json()["model_root"] == str(new_root.resolve())
+
+        config_path = tmp_path / "manager-config.json"
+        assert json.loads(config_path.read_text(encoding="utf-8"))["model_root"] == str(
+            new_root.resolve()
+        )
+        assert client.get("/api/v1/models").json()["count"] == 1
+        assert client.get("/api/v1/models").json()["models"][0]["id"] == "fixture-model"
+
+        scan = client.post("/api/v1/models/scan")
+        assert scan.status_code == 200
+        assert scan.json()["model_root"] == str(new_root.resolve())
+        assert scan.json()["count"] == 1
+        assert scan.json()["valid_count"] == 1
+
+
+def test_validate_model_root_endpoint_reports_scan_count(model_root: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.post(
+            "/api/v1/config/validate",
+            json={"model_root": str(model_root)},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["valid"] is True
+        assert payload["model_count"] == 1
+        assert payload["valid_count"] == 1
+        assert payload["ready_to_start_count"] == 1
+
+
+def test_update_config_rejects_relative_model_root(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.put("/api/v1/config", json={"model_root": "relative/models"})
+        assert response.status_code == 400
+        assert "absolute path" in response.json()["detail"]["errors"][0]
+
+
+def test_update_config_rejects_model_root_inside_data_dir(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        response = client.put(
+            "/api/v1/config",
+            json={"model_root": str(tmp_path / "manager-data" / "nested")},
+        )
+        assert response.status_code == 400
+        assert "overlap" in response.json()["detail"]["errors"][0]
+
+
+def test_update_config_blocks_model_root_change_while_runtime_active(
+    model_root: Path,
+    tmp_path: Path,
+) -> None:
+    new_root = tmp_path / "new-models"
+    new_root.mkdir()
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        app = client.app
+        job = app.state.jobs.create("start", "fixture-model", "running")
+        app.state.jobs.update(job, port=18080)
+
+        response = client.put("/api/v1/config", json={"model_root": str(new_root)})
+        assert response.status_code == 409
+        assert "stop running models" in response.json()["detail"]["message"]
+
+
 def test_confirm_draft_manifest_without_touching_model_directory(model_root: Path, tmp_path: Path) -> None:
     package = model_root / "draft-model"
     from conftest import write_model_package

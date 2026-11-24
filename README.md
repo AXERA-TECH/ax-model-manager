@@ -372,7 +372,7 @@ http://<board-ip>:18090/docs
 
 | 字段 | 说明 |
 |---|---|
-| `model_root` | 模型包根目录 |
+| `model_root` | 模型包根目录；可在 Web Admin UI 的 Settings 中修改 |
 | `llama_port_min/max` | llama-server 端口池 |
 | `read_only` | true 时只允许读取 |
 | `enable_control` | true 时允许启动/停止/重启/切换 |
@@ -385,6 +385,40 @@ http://<board-ip>:18090/docs
 | `allowed_origins` | 浏览器跨源访问白名单 |
 
 配置文件权限应保持 `0600`，不要提交真实 token。
+
+### 修改模型根目录
+
+Web Admin UI 右上角 `Settings` 可以修改 `model_root`：
+
+```text
+Model root directory
+[ /mnt/tangqi ]
+[Validate] [Save & Scan]
+```
+
+`Save & Scan` 会：
+
+1. 校验路径必须是存在的绝对目录；
+2. 拒绝 `/`、Manager data_dir 及其子目录；
+3. 有运行中的模型时拒绝修改；
+4. 保存配置；
+5. 立即重新扫描该目录。
+
+也可以直接调用：
+
+```bash
+curl -X PUT "$MANAGER/api/v1/config" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model_root": "/mnt/tangqi"}'
+
+curl -X POST "$MANAGER/api/v1/models/scan" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+`POST /api/v1/models/scan` 返回发现的模型数量、可启动数量和扫描错误。
+
+注意：修改 `model_root` 不会移动已有模型；旧路径下的模型会从列表中消失。
 
 ## API 调用方式
 

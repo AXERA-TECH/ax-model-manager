@@ -21,7 +21,8 @@
     <div class="header-actions">
       <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
       <button id="connect" class="primary">Connect</button>
-      <button id="refresh">Refresh</button>
+      <button id="refresh">Refresh / Scan</button>
+      <button id="settings">Settings</button>
       <button id="theme-toggle" title="Switch light/dark theme">☀️</button>
     </div>
   </header>
@@ -145,6 +146,35 @@
       </div>
     </div>
   </main>
+
+  <dialog id="settings-dialog" class="settings-dialog">
+    <div class="dialog-head">
+      <div>
+        <h3>Model Manager Settings</h3>
+        <div class="job-detail">Local model discovery and storage path</div>
+      </div>
+      <button id="settings-close">Close</button>
+    </div>
+    <div class="settings-body">
+      <label class="settings-field">
+        Model root directory
+        <input id="model-root-input" type="text" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="message">
+        Each first-level directory under this path is treated as one model package.
+        Save &amp; Scan persists the path and immediately rescans it.
+      </p>
+      <p class="message">
+        Changing this path does not move existing models. Stop running models before
+        changing it, otherwise running models may no longer be visible under the new root.
+      </p>
+      <div id="settings-result" class="settings-result hidden"></div>
+      <div class="dialog-controls settings-actions">
+        <button id="validate-model-root">Validate</button>
+        <button id="save-model-root" class="primary">Save &amp; Scan</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="launch-dialog">
     <div class="dialog-head">

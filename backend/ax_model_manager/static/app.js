@@ -12,6 +12,7 @@ let launchModel = null;
 let launchMode = 'start';
 let launchManifest = null;
 let currentDemoUrl = '';
+let currentConfig = {};
 const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
@@ -660,6 +661,7 @@ async function refresh() {
     ]);
     clearAlert();
     controlEnabled = Boolean(dashboard.config?.enable_control);
+    currentConfig = dashboard.config || {};
     $('subheader').textContent = `${dashboard.version} · ${dashboard.config?.process_backend || 'none'} · ${dashboard.config?.model_root}`;
     $('metric-manager').textContent = dashboard.config?.read_only ? 'read-only' : 'control';
     $('metric-models').textContent = dashboard.model_count;
@@ -759,6 +761,74 @@ async function saveModelLimit() {
       method: 'PUT',
       body: JSON.stringify({ max_running_models: value }),
     });
+    clearAlert();
+    await refresh();
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
+async function openSettings() {
+  try {
+    currentConfig = await api('/api/v1/config');
+  } catch (_) {}
+  $('model-root-input').value = currentConfig?.model_root || '';
+  const result = $('settings-result');
+  result.className = 'settings-result hidden';
+  result.textContent = '';
+  $('settings-dialog').showModal();
+}
+
+function renderSettingsResult(result) {
+  const output = $('settings-result');
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const errorText = errors
+    .map(item => typeof item === 'string'
+      ? item
+      : `${item.id || 'model'}: ${(item.errors || []).join(', ')}`)
+    .join('\n');
+  const failed = result?.valid === false;
+  output.className = `settings-result ${failed ? 'error' : 'ok'}`;
+  if (failed) {
+    output.textContent = `Cannot use this model root.\n${errorText || 'validation failed'}`;
+    return;
+  }
+  const count = result?.count ?? result?.model_count ?? '—';
+  const valid = result?.valid_count ?? '—';
+  const ready = result?.ready_to_start_count ?? '—';
+  output.textContent = [
+    `Model root: ${result?.model_root || $('model-root-input').value}`,
+    `Models found: ${count}`,
+    `Valid: ${valid}`,
+    `Ready to start: ${ready}`,
+  ].join('\n') + (errorText ? `\n\nModel issues:\n${errorText}` : '');
+}
+
+async function validateModelRoot() {
+  const value = $('model-root-input').value.trim();
+  if (!value) return;
+  try {
+    const result = await api('/api/v1/config/validate', {
+      method: 'POST',
+      body: JSON.stringify({ model_root: value }),
+    });
+    renderSettingsResult(result);
+  } catch (error) {
+    showAlert(error.message);
+  }
+}
+
+async function saveModelRoot() {
+  const value = $('model-root-input').value.trim();
+  if (!value) return;
+  try {
+    await api('/api/v1/config', {
+      method: 'PUT',
+      body: JSON.stringify({ model_root: value }),
+    });
+    const result = await api('/api/v1/models/scan', { method: 'POST' });
+    currentConfig.model_root = result.model_root;
+    renderSettingsResult(result);
     clearAlert();
     await refresh();
   } catch (error) {
@@ -1066,6 +1136,10 @@ $('connect').onclick = () => {
   refresh();
 };
 $('refresh').onclick = refresh;
+$('settings').onclick = openSettings;
+$('settings-close').onclick = () => $('settings-dialog').close();
+$('validate-model-root').onclick = validateModelRoot;
+$('save-model-root').onclick = saveModelRoot;
 $('theme-toggle').onclick = () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 };
