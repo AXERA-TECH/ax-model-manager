@@ -1790,7 +1790,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
-        return FileResponse(static_dir / "index.html")
+        # Admin UI assets change between releases; always revalidate so a
+        # browser left open on an older bundle does not keep stale JS.
+        return FileResponse(
+            static_dir / "index.html",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/ui/{filename}", include_in_schema=False)
     async def static_file(filename: str) -> FileResponse:
@@ -1798,7 +1803,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allowed = {"styles.css", "app.js"}
         if filename not in allowed:
             raise HTTPException(status_code=404, detail="not found")
-        return FileResponse(static_dir / filename)
+        return FileResponse(
+            static_dir / filename,
+            headers={"Cache-Control": "no-cache"},
+        )
 
     return app
 
