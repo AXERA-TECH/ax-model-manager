@@ -41,7 +41,10 @@ SAMPLING_RANGES = {
     "frequency_penalty": (-2.0, 2.0),
 }
 CAPABILITIES = {"text", "image", "audio", "tts", "image_gen"}
-ENGINES = {"llama-server", "llama-tts", "llama-mtmd-cli", "llama-cli"}
+ENGINES = {"llama-server", "llama-tts", "llama-mtmd-cli", "llama-cli", "axdiffusion-server"}
+LAUNCH_KEYS = {"argv", "health_path", "out_dir", "default_port"}
+LAUNCH_PLACEHOLDERS = {"{port}", "{model_dir}", "{out_dir}"}
+API_KEYS = {"type", "base_path", "endpoints", "web_ui", "notes"}
 DEFAULT_KEYS = {
     "system_prompt",
     "max_output_tokens",
@@ -312,6 +315,128 @@ def _validate_defaults(defaults: Any) -> tuple[dict[str, Any], list[str]]:
     return clean, errors
 
 
+def _validate_launch(launch: Any) -> tuple[dict[str, Any], list[str]]:
+    """Validate a non-llama launch template (e.g. axdiffusion-server).
+
+    The template is applied verbatim except for a small set of placeholders
+    that the manager substitutes at start time. No shell is involved.
+    """
+
+    errors: list[str] = []
+    if launch is None:
+        return {}, errors
+    if not isinstance(launch, dict):
+        return {}, ["launch must be an object"]
+    if not launch:
+        return {}, errors
+
+    unknown = sorted(set(launch) - LAUNCH_KEYS)
+    if unknown:
+        errors.append(f"launch has unknown keys: {', '.join(unknown)}")
+
+    argv = launch.get("argv")
+    if not isinstance(argv, list) or not argv:
+        errors.append("launch.argv must be a non-empty string array")
+        argv = []
+    elif len(argv) > 128:
+        errors.append("launch.argv has too many entries (max 128)")
+    else:
+        for index, item in enumerate(argv):
+            if not isinstance(item, str) or not item or len(item) > 4096 or "\x00" in item:
+                errors.append(f"launch.argv[{index}] must be a non-empty string")
+        if not any("{port}" in item for item in argv if isinstance(item, str)):
+            errors.append("launch.argv must reference {port}")
+
+    health_path = launch.get("health_path", "/health")
+    if not isinstance(health_path, str) or not health_path.startswith("/") or any(ch.isspace() for ch in health_path):
+        errors.append("launch.health_path must be an absolute URL path")
+    else:
+        health_path = health_path
+
+    out_dir = launch.get("out_dir")
+    if out_dir is not None and (not isinstance(out_dir, str) or not out_dir or out_dir.startswith("/") or ".." in Path(out_dir).parts):
+        errors.append("launch.out_dir must be a relative path inside the model directory")
+        out_dir = None
+    default_port = launch.get("default_port")
+    if default_port is not None and (
+        isinstance(default_port, bool) or not isinstance(default_port, int) or not 1024 <= default_port <= 65535
+    ):
+        errors.append("launch.default_port must be an integer between 1024 and 65535")
+        default_port = None
+
+    clean: dict[str, Any] = {}
+    if isinstance(argv, list) and argv and not any(
+        not isinstance(item, str) or not item for item in argv
+    ):
+        clean["argv"] = list(argv)
+    clean["health_path"] = health_path if isinstance(health_path, str) else "/health"
+    if out_dir:
+        clean["out_dir"] = out_dir
+    if default_port is not None:
+        clean["default_port"] = default_port
+    return clean, errors
+
+
+def _validate_api(api: Any) -> tuple[dict[str, Any], list[str]]:
+    """Validate the public API description advertised by a model package."""
+
+    errors: list[str] = []
+    if api is None:
+        return {}, errors
+    if not isinstance(api, dict):
+        return {}, ["api must be an object"]
+    if not api:
+        return {}, errors
+
+    unknown = sorted(set(api) - API_KEYS)
+    if unknown:
+        errors.append(f"api has unknown keys: {', '.join(unknown)}")
+
+    clean: dict[str, Any] = {}
+    api_type = api.get("type")
+    if not isinstance(api_type, str) or not QUANTIZATION_RE.fullmatch(api_type):
+        errors.append("api.type must be a safe identifier such as openai-images")
+    else:
+        clean["type"] = api_type
+
+    base_path = api.get("base_path", "/")
+    if not isinstance(base_path, str) or not base_path.startswith("/") or any(ch.isspace() for ch in base_path):
+        errors.append("api.base_path must be an absolute URL path")
+    else:
+        clean["base_path"] = base_path
+
+    endpoints = api.get("endpoints")
+    if endpoints is not None:
+        if (
+            not isinstance(endpoints, list)
+            or not endpoints
+            or any(
+                not isinstance(item, str)
+                or not item.startswith("/")
+                or any(ch.isspace() for ch in item)
+                for item in endpoints
+            )
+        ):
+            errors.append("api.endpoints must be a non-empty array of absolute URL paths")
+        else:
+            clean["endpoints"] = list(endpoints)
+
+    web_ui = api.get("web_ui")
+    if web_ui is not None:
+        if not isinstance(web_ui, str) or not web_ui.startswith("/") or any(ch.isspace() for ch in web_ui):
+            errors.append("api.web_ui must be an absolute URL path")
+        else:
+            clean["web_ui"] = web_ui
+
+    notes = api.get("notes")
+    if notes is not None:
+        if not isinstance(notes, str) or len(notes) > 4096:
+            errors.append("api.notes must be a string of at most 4096 characters")
+        else:
+            clean["notes"] = notes
+    return clean, errors
+
+
 def parse_manifest_file(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -377,6 +502,13 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
     warnings.extend(profile_warnings)
     defaults, default_errors = _validate_defaults(manifest.get("defaults"))
     errors.extend(default_errors)
+    launch, launch_errors = _validate_launch(manifest.get("launch"))
+    errors.extend(launch_errors)
+    api, api_errors = _validate_api(manifest.get("api"))
+    errors.extend(api_errors)
+
+    if engine == "axdiffusion-server" and not launch:
+        errors.append("axdiffusion-server requires a launch template")
 
     normalized = {
         **manifest,
@@ -386,6 +518,8 @@ def validate_manifest(manifest: Any, model_dir: Path) -> ManifestResult:
         "max_context": max_context,
         "defaults": defaults,
         "profiles": profiles,
+        "launch": launch,
+        "api": api,
     }
     return ManifestResult(normalized, errors, warnings)
 

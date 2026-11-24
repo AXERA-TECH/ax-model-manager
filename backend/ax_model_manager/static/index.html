@@ -193,7 +193,7 @@
         <label>Profile<select id="profile"></select></label>
             <label>New profile name<input id="new-profile-name" type="text" placeholder="benchmark_greedy" autocomplete="off"></label>
         <label>Port<input id="port" type="number" min="18080" max="18089" placeholder="auto"></label>
-        <label>Context
+        <label data-llama-only>Context
           <select id="context" aria-label="Context length">
             <option value="4096">4K</option>
             <option value="8192">8K</option>
@@ -204,20 +204,24 @@
             <option value="262144">256K</option>
           </select>
         </label>
-        <label>Batch<input id="batch" type="number" min="1" step="256" value="4096"></label>
-        <label>UBatch<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
-        <label>Cache RAM MiB<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
-        <label>Ctxcp<input id="ctxcp" type="number" min="0" max="128" value="0"></label>
-        <label class="checkbox"><input id="mtp" type="checkbox"> MTP</label>
-        <label class="checkbox"><input id="metrics" type="checkbox"> Enable /metrics</label>
+        <label data-llama-only>Batch<input id="batch" type="number" min="1" step="256" value="4096"></label>
+        <label data-llama-only>UBatch<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
+        <label data-llama-only>Cache RAM MiB<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
+        <label data-llama-only>Ctxcp<input id="ctxcp" type="number" min="0" max="128" value="0"></label>
+        <label class="checkbox" data-llama-only><input id="mtp" type="checkbox"> MTP</label>
+        <label class="checkbox" data-llama-only><input id="metrics" type="checkbox"> Enable /metrics</label>
       </div>
       <p id="launch-task-message" class="message hidden">
         This package is a one-shot TTS task. It needs text and an output file at request time,
         so it is not started as a long-running OpenAI-compatible service.
       </p>
+      <p id="launch-imagegen-message" class="message hidden">
+        Image generation service (axdiffusion-server). Only the profile and port are used;
+        LLM context, KV cache and sampling options do not apply.
+      </p>
 
-      <div class="section-head"><h2>Sampling</h2></div>
-      <div class="form-grid">
+      <div class="section-head" data-llama-only><h2>Sampling</h2></div>
+      <div class="form-grid" data-llama-only>
         <label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.01" value="0"></label>
         <label>Top K<input id="top-k" type="number" min="0" step="1" value="0"></label>
         <label>Top P<input id="top-p" type="number" min="0" max="1" step="0.01" value="1"></label>

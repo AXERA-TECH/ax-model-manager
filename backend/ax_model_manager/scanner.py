@@ -21,6 +21,9 @@ def _looks_like_model(directory: Path) -> bool:
     bin_dir = directory / "bin"
     if bin_dir.is_dir() and any(item.is_file() for item in bin_dir.glob("llama-*")):
         return True
+    # Non-llama runtimes (e.g. axdiffusion-server) carry their own descriptor.
+    if (directory / "axdiffusion.json").is_file():
+        return True
     return any(
         item.is_file() and not item.name.lower().startswith("mmproj-")
         for item in directory.rglob("*.gguf")
@@ -132,6 +135,7 @@ def inspect_model_directory(
         "errors": sorted(set(errors)),
         "warnings": sorted(set(warnings)),
         "capabilities": manifest.get("capabilities", ["text"]),
+        "api_type": (manifest.get("api") or {}).get("type"),
         "runtime_type": runtime_type,
         "max_context": manifest.get("max_context"),
         "defaults": manifest.get("defaults", {}),
@@ -178,6 +182,7 @@ def scan_models(
                     "errors": ["model directory symlink escapes model root"],
                     "warnings": [],
                     "capabilities": [],
+                    "api_type": None,
                     "runtime_type": "service",
                     "max_context": None,
                     "defaults": {},
@@ -227,6 +232,7 @@ def scan_models(
                 "errors": [str(exc)],
                 "warnings": [],
                 "capabilities": [],
+                "api_type": None,
                 "runtime_type": "service",
                 "max_context": None,
                 "defaults": {},

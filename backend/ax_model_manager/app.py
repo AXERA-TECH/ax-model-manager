@@ -691,14 +691,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
-    def allocate_port(request: Request, preferred: int | None = None) -> int:
+    def allocate_port(
+        request: Request,
+        preferred: int | None = None,
+        allow_outside_range: bool = False,
+    ) -> int:
         settings = request.app.state.settings
         candidates = [preferred] if preferred else list(
             range(settings.llama_port_min, settings.llama_port_max + 1)
         )
         busy_ports = {job.port for job in request.app.state.jobs.active() if job.port}
         for port in candidates:
-            if not settings.llama_port_min <= port <= settings.llama_port_max:
+            if allow_outside_range:
+                if not 1024 <= port <= 65535:
+                    continue
+            elif not settings.llama_port_min <= port <= settings.llama_port_max:
                 continue
             if port in busy_ports:
                 continue
@@ -717,6 +724,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         url = f"http://127.0.0.1:{port}{path}"
         with urllib.request.urlopen(url, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def runtime_is_busy(runtime: Any) -> bool:
+        """Return True when the runtime still processes a request.
+
+        llama-server exposes /slots. Launch-template runtimes such as
+        axdiffusion-server do not; they queue requests themselves and shut
+        down cleanly on SIGTERM, so they are never reported as busy here.
+        """
+
+        if runtime.state != "running" or not runtime.port:
+            return False
+        try:
+            record = find_model(runtime.model_id)
+        except Exception:
+            record = {}
+        if (record.get("manifest") or {}).get("launch"):
+            return False
+        try:
+            slots = get_runtime_json(runtime.port, "/slots")
+        except Exception:
+            return True
+        return any(
+            slot.get("is_processing")
+            for slot in slots
+            if isinstance(slot, dict)
+        )
 
     def board_resources() -> dict[str, Any]:
         """Read the board's optional tempmon payload for the resource panel."""
@@ -1076,6 +1109,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 argv.extend(["--frequency-penalty", str(sampling["frequency_penalty"])])
         argv.extend(["--host", "0.0.0.0", "--port", str(job.port)])
 
+        # Non-llama runtimes (e.g. axdiffusion-server) carry their own launch
+        # template in the manifest. The template is expanded without a shell.
+        launch = record["manifest"].get("launch") or {}
+        if launch:
+            substitutions = {
+                "{port}": str(job.port),
+                "{model_dir}": str(Path(record["directory"])),
+                "{out_dir}": str(Path(record["directory"]) / launch.get("out_dir", "output")),
+            }
+            argv = [str(binary)]
+            for item in launch.get("argv", []):
+                for placeholder, value in substitutions.items():
+                    item = item.replace(placeholder, value)
+                argv.append(item)
+
         if request.app.state.settings.process_backend == "fake-subprocess":
             argv = [
                 str(binary), "--port", str(job.port),
@@ -1115,7 +1163,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profiles = record["manifest"].get("profiles", {})
         if body.profile not in profiles:
             raise HTTPException(status_code=400, detail=f"profile not found: {body.profile}")
-        port = allocate_port(request, body.port)
+        launch = record["manifest"].get("launch") or {}
+        default_port = launch.get("default_port")
+        port = allocate_port(
+            request,
+            body.port or default_port,
+            allow_outside_range=bool(body.port is None and default_port),
+        )
         preview_job = SimpleNamespace(id="preview", port=port)
         spec = build_process_spec(
             request,
@@ -1170,11 +1224,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 or 600
             )
             deadline = time.monotonic() + timeout
+            health_path = (record["manifest"].get("launch") or {}).get("health_path", "/health")
             while time.monotonic() < deadline:
                 if not request.app.state.process_manager.is_alive(handle):
-                    raise RuntimeError("llama-server exited before becoming ready")
+                    raise RuntimeError("runtime exited before becoming ready")
                 try:
-                    health = get_runtime_json(job.port, "/health", timeout=0.2)
+                    health = get_runtime_json(job.port, health_path, timeout=0.2)
                     if health.get("status") == "ok":
                         try:
                             model_list = get_runtime_json(job.port, "/v1/models")
@@ -1251,7 +1306,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             )
 
-        port = allocate_port(request, body.port)
+        launch = record["manifest"].get("launch") or {}
+        default_port = launch.get("default_port")
+        port = allocate_port(
+            request,
+            body.port or default_port,
+            allow_outside_range=bool(body.port is None and default_port),
+        )
         job = request.app.state.jobs.create("start", model_id, "starting")
         request.app.state.jobs.update(job, port=port)
         audit(
@@ -1498,17 +1559,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not candidates:
             raise HTTPException(status_code=409, detail=f"no running model: {model_id}")
         runtime = candidates[0]
-        busy = False
-        if runtime.state == "running" and runtime.port:
-            try:
-                slots = get_runtime_json(runtime.port, "/slots")
-                busy = any(
-                    slot.get("is_processing")
-                    for slot in slots
-                    if isinstance(slot, dict)
-                )
-            except Exception:
-                busy = True
+        busy = runtime_is_busy(runtime)
         if busy and not body.force:
             raise HTTPException(
                 status_code=409,
@@ -1564,13 +1615,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not runtime:
             raise HTTPException(status_code=409, detail=f"no running model: {model_id}")
 
-        busy = False
-        if runtime.state == "running" and runtime.port:
-            try:
-                slots = get_runtime_json(runtime.port, "/slots")
-                busy = any(slot.get("is_processing") for slot in slots if isinstance(slot, dict))
-            except Exception:
-                busy = True
+        busy = runtime_is_busy(runtime)
         if busy and not body.force:
             raise HTTPException(
                 status_code=409,
@@ -1669,14 +1714,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         busy_runtime = None
         for runtime in runtimes:
-            if runtime.state != "running" or not runtime.port:
-                continue
-            try:
-                slots = get_runtime_json(runtime.port, "/slots")
-                if any(slot.get("is_processing") for slot in slots if isinstance(slot, dict)):
-                    busy_runtime = runtime
-                    break
-            except Exception:
+            if runtime_is_busy(runtime):
                 busy_runtime = runtime
                 break
         if busy_runtime and not body.force:

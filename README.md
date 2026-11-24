@@ -129,6 +129,7 @@ http://<board-ip>:18090/
 
 - [用户指南](docs/USER_GUIDE.md)：模型包规范、安装、配置、API、打包回归、安全说明
 - [第三方 UI 对接](docs/third-party-ui-integration.md)：给上位机 / Web UI 团队的接入说明
+- [图像生成模型接入](docs/image-generation.md)：H3 Image / axdiffusion 的部署与 API 用法
 - [Agent / Skills 指南](docs/skills.md)：项目结构、API 调用流程、开发守则
 - [AXERA tempmon](https://github.com/AXERA-TECH/tempmon)：板端只读监控 agent
 

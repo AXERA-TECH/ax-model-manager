@@ -653,6 +653,43 @@ curl -sS "$RUNTIME/v1/audio/speech" \
 
 具体扩展字段以对应模型包 README / manifest 说明为准。
 
+### 8.5 图像生成（axdiffusion / H3 Image）
+
+`capabilities` 含 `image_gen` 的模型不是 llama-server，不提供 `/v1/chat/completions`。
+Manager 在模型详情中返回 `manifest.api`，上位机应据此渲染生图界面，而不是聊天窗口：
+
+```json
+{
+  "api": {
+    "type": "openai-images",
+    "base_path": "/v1",
+    "endpoints": ["/v1/images/generations", "/v1/models", "/v1/loras", "/v1/jobs", "/health"],
+    "web_ui": "/"
+  }
+}
+```
+
+调用示例（端口来自 `job.port`，默认 `launch.default_port`，当前为 18500）：
+
+```bash
+curl -sS "http://$BOARD_IP:$PORT/v1/images/generations" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "minimax-h3-image",
+    "prompt": "a lighthouse on a cliff at sunset",
+    "n": 1,
+    "size": "1024x1024",
+    "response_format": "url",
+    "seed": 42
+  }'
+```
+
+- 同一时刻只生成一张图，并发请求在服务端排队。
+- 参考图编辑走 `POST /v1/jobs`（带 `images` base64），不是 OpenAI `/v1/images/edits`。
+- LoRA 目录、输出目录由 manifest 的 `launch.argv` 决定；可用 LoRA 见 `GET /v1/loras`。
+- 内置网页：`http://$BOARD_IP:$PORT/`，Manager 卡片上的 `Open web UI` 指向这里。
+- 完整说明见 [docs/image-generation.md](image-generation.md)。
+
 ---
 
 ## 9. 推理指标采集

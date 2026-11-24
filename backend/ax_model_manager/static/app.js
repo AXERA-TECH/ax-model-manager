@@ -490,6 +490,7 @@ function renderModels(models, config = {}) {
     if (!showInvalid && !model.valid) continue;
     const active = model.active_job;
     const isTask = model.runtime_type === 'task';
+    const isImageGen = (model.capabilities || []).includes('image_gen');
     const state = active?.state || (model.ready_to_start ? 'ready' : model.valid ? 'stopped' : 'invalid');
     const card = document.createElement('article');
     card.className = 'model-card';
@@ -514,6 +515,7 @@ function renderModels(models, config = {}) {
       model.manifest_source,
       formatSize(model.size_bytes),
       ...(model.capabilities || []),
+      model.api_type || '',
       model.runtime_type === 'task' ? 'one-shot task' : '',
       ...(model.profiles || []),
       active?.port ? `:${active.port}` : '',
@@ -551,11 +553,15 @@ function renderModels(models, config = {}) {
       if (!active && model.ready_to_start && !isTask) {
         const start = document.createElement('button');
         start.className = 'small primary';
-        start.textContent = activeCount >= modelLimit ? 'Force start…' : 'Start…';
-        start.onclick = () => openLaunchDialog(model, 'start');
+        start.textContent = isImageGen
+          ? (activeCount >= modelLimit ? 'Force start' : 'Start')
+          : (activeCount >= modelLimit ? 'Force start…' : 'Start…');
+        start.onclick = () => (isImageGen
+          ? startImageGen(model)
+          : openLaunchDialog(model, 'start'));
         actions.append(start);
       }
-      if (model.valid) {
+      if (model.valid && !isImageGen) {
         const options = document.createElement('button');
         options.className = 'small';
         options.textContent = 'Options…';
@@ -566,8 +572,10 @@ function renderModels(models, config = {}) {
       if (!active && anyActive && model.ready_to_start && !isTask) {
         const switchButton = document.createElement('button');
         switchButton.className = 'small';
-        switchButton.textContent = 'Switch to…';
-        switchButton.onclick = () => openLaunchDialog(model, 'switch');
+        switchButton.textContent = isImageGen ? 'Switch to' : 'Switch to…';
+        switchButton.onclick = () => (isImageGen
+          ? startImageGen(model, 'switch')
+          : openLaunchDialog(model, 'switch'));
         actions.append(switchButton);
       }
       if (active) {
@@ -579,8 +587,18 @@ function renderModels(models, config = {}) {
         const restart = document.createElement('button');
         restart.className = 'small';
         restart.textContent = 'Restart…';
-        restart.onclick = () => openLaunchDialog(model, 'restart');
+        restart.onclick = () => (isImageGen
+          ? control(`/api/v1/models/${model.id}/restart`, { profile: 'default' })
+          : openLaunchDialog(model, 'restart'));
         actions.append(restart);
+        if (isImageGen && active.port) {
+          const open = document.createElement('button');
+          open.className = 'small';
+          open.textContent = 'Open web UI';
+          open.title = `Open the image generation web page on port ${active.port}`;
+          open.onclick = () => window.open(`http://${window.location.hostname}:${active.port}/`, '_blank');
+          actions.append(open);
+        }
       }
     }
 
@@ -699,10 +717,13 @@ function detailRow(label, value, title = '') {
 async function openModelDialog(model) {
   try {
     const detail = await api(`/api/v1/models/${model.id}`);
+    const isImageGen = (detail.capabilities || []).includes('image_gen');
     $('model-dialog-title').textContent = detail.name || detail.id;
     $('model-dialog-subtitle').textContent = `${detail.id} · ${detail.directory}`;
     const summary = $('model-detail-summary');
     summary.replaceChildren();
+    const runtimePort = detail.active_job?.port;
+    const apiBase = runtimePort ? `http://${window.location.hostname}:${runtimePort}` : null;
     for (const [label, value] of [
       ['State', detail.active_job?.state || (detail.ready_to_start ? 'ready' : detail.valid ? 'stopped' : 'invalid')],
       ['Runtime', detail.runtime_type === 'task' ? 'one-shot task' : 'long-running service'],
@@ -710,15 +731,23 @@ async function openModelDialog(model) {
       ['Valid', detail.valid ? 'yes' : 'no'],
       ['Size', formatSize(detail.size_bytes)],
       ['Files', detail.file_count ?? '—'],
-      ['Context', detail.max_context?.toLocaleString() || '—'],
-      ['Default output', detail.defaults?.max_output_tokens?.toLocaleString() || '—'],
-      ['KV cache', detail.defaults?.kv_cache_quantization || '—'],
-      ['Attention', detail.defaults?.attention_quantization || '—'],
-      ['Speculative', detail.defaults?.speculative?.enabled === undefined
-        ? '—'
-        : detail.defaults.speculative.enabled
-          ? detail.defaults.speculative.type || 'enabled'
-          : 'off'],
+      ...(isImageGen ? [
+        ['Engine', detail.manifest?.engine || '—'],
+        ['API', detail.manifest?.api?.type || '—'],
+        ['Endpoints', (detail.manifest?.api?.endpoints || []).join('  ') || '—'],
+        ['API base', apiBase || '—'],
+        ['Web UI', apiBase ? `${apiBase}${detail.manifest?.api?.web_ui || '/'}` : '—'],
+      ] : [
+        ['Context', detail.max_context?.toLocaleString() || '—'],
+        ['Default output', detail.defaults?.max_output_tokens?.toLocaleString() || '—'],
+        ['KV cache', detail.defaults?.kv_cache_quantization || '—'],
+        ['Attention', detail.defaults?.attention_quantization || '—'],
+        ['Speculative', detail.defaults?.speculative?.enabled === undefined
+          ? '—'
+          : detail.defaults.speculative.enabled
+            ? detail.defaults.speculative.type || 'enabled'
+            : 'off'],
+      ]),
       ['Capabilities', (detail.capabilities || []).join(', ') || '—'],
       ['Profiles', (detail.profiles || []).join(', ') || '—'],
     ]) {
@@ -884,6 +913,15 @@ function stopModel(id) {
   control(`/api/v1/models/${id}/stop`, { timeout_seconds: 15 });
 }
 
+// Image-generation runtimes carry a fixed launch template, so they are
+// started directly with their default profile instead of the LLM dialog.
+function startImageGen(model, mode = 'start') {
+  const endpoint = mode === 'switch'
+    ? `/api/v1/models/${model.id}/switch-to`
+    : `/api/v1/models/${model.id}/start`;
+  control(endpoint, { profile: 'default' });
+}
+
 function applyLaunchProfile(name) {
   const profile = launchManifest?.profiles?.[name] || {};
   const configuredContext = Number(profile.context);
@@ -932,6 +970,11 @@ async function openLaunchDialog(model, mode = 'start') {
       'hidden',
       !(model.runtime_type === 'task' || launchManifest?.runtime_type === 'task'),
     );
+    const isImageGen = (model.capabilities || []).includes('image_gen');
+    document.querySelectorAll('[data-llama-only]').forEach(element => {
+      element.classList.toggle('hidden', isImageGen);
+    });
+    $('launch-imagegen-message').classList.toggle('hidden', !isImageGen);
 
     const profileSelect = $('profile');
     profileSelect.replaceChildren();

@@ -209,12 +209,31 @@ log_path
 http://<board-ip>:<port>
 ```
 
-### Step 6：调用 llama-server
+### Step 6：调用推理服务
+
+先看模型详情里的 `manifest.api.type`：
+
+- `openai-images`（图像生成，`capabilities` 含 `image_gen`）→ 调用
+  `POST $RUNTIME/v1/images/generations`，不要调用 chat/completions。
+- 未声明 `api` 的模型 → 默认按 llama-server 的 chat/completions 处理。
 
 先获取实际 runtime model ID：
 
 ```bash
 curl "$RUNTIME/v1/models"
+```
+
+图像生成示例：
+
+```bash
+curl -X POST "$RUNTIME/v1/images/generations" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "minimax-h3-image",
+    "prompt": "a lighthouse on a cliff at sunset",
+    "size": "1024x1024",
+    "response_format": "url"
+  }'
 ```
 
 发送 chat：

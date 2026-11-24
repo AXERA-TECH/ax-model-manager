@@ -26,6 +26,92 @@ def test_artifact_rejects_absolute_path(tmp_path: Path) -> None:
     assert any("absolute" in item for item in report["errors"])
 
 
+def _h3_manifest() -> dict:
+    return {
+        "schema_version": 1,
+        "id": "minimax-h3-image",
+        "engine": "axdiffusion-server",
+        "artifacts": {"binary": "bin/axdiffusion-server", "model": "axdiffusion.json"},
+        "capabilities": ["image_gen"],
+        "runtime_type": "service",
+        "max_context": 20480,
+        "profiles": {"default": {"startup_timeout_seconds": 900}},
+        "launch": {
+            "argv": ["--model", ".", "--port", "{port}", "--out-dir", "output"],
+            "health_path": "/health",
+        },
+    }
+
+
+def test_validate_manifest_accepts_axdiffusion_launch(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "axdiffusion-server").write_text("#!/bin/sh\n")
+    (tmp_path / "axdiffusion.json").write_text("{}", encoding="utf-8")
+
+    result = validate_manifest(_h3_manifest(), tmp_path)
+
+    assert result.errors == []
+    assert result.manifest["launch"]["health_path"] == "/health"
+
+
+def test_validate_manifest_requires_launch_for_axdiffusion(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "axdiffusion-server").write_text("#!/bin/sh\n")
+    (tmp_path / "axdiffusion.json").write_text("{}", encoding="utf-8")
+    manifest = _h3_manifest()
+    del manifest["launch"]
+
+    result = validate_manifest(manifest, tmp_path)
+
+    assert "axdiffusion-server requires a launch template" in result.errors
+
+
+def test_validate_manifest_rejects_launch_without_port_placeholder(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "axdiffusion-server").write_text("#!/bin/sh\n")
+    (tmp_path / "axdiffusion.json").write_text("{}", encoding="utf-8")
+    manifest = _h3_manifest()
+    manifest["launch"]["argv"] = ["--model", "."]
+
+    result = validate_manifest(manifest, tmp_path)
+
+    assert "launch.argv must reference {port}" in result.errors
+
+
+def test_validate_manifest_accepts_api_metadata_and_default_port(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "axdiffusion-server").write_text("#!/bin/sh\n")
+    (tmp_path / "axdiffusion.json").write_text("{}", encoding="utf-8")
+    manifest = _h3_manifest()
+    manifest["launch"]["default_port"] = 18500
+    manifest["api"] = {
+        "type": "openai-images",
+        "base_path": "/v1",
+        "endpoints": ["/v1/images/generations", "/v1/models", "/health"],
+        "web_ui": "/",
+        "notes": "OpenAI Images compatible; reference editing via /v1/jobs.",
+    }
+
+    result = validate_manifest(manifest, tmp_path)
+
+    assert result.errors == []
+    assert result.manifest["launch"]["default_port"] == 18500
+    assert result.manifest["api"]["type"] == "openai-images"
+    assert "/v1/images/generations" in result.manifest["api"]["endpoints"]
+
+
+def test_validate_manifest_rejects_bad_api_endpoints(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "axdiffusion-server").write_text("#!/bin/sh\n")
+    (tmp_path / "axdiffusion.json").write_text("{}", encoding="utf-8")
+    manifest = _h3_manifest()
+    manifest["api"] = {"type": "openai-images", "endpoints": ["v1/images/generations"]}
+
+    result = validate_manifest(manifest, tmp_path)
+
+    assert "api.endpoints must be a non-empty array of absolute URL paths" in result.errors
+
+
 def test_draft_manifest_infers_expected_artifacts(tmp_path: Path) -> None:
     directory = write_model_package(tmp_path / "fixture-model", manifest=False)
     manifest = infer_manifest(directory)

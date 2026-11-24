@@ -284,6 +284,36 @@ def test_start_and_stop_fake_model(model_root: Path, tmp_path: Path) -> None:
         assert any(item["action"] == "stop_completed" for item in audit)
 
 
+def test_start_uses_launch_default_port(model_root: Path, tmp_path: Path) -> None:
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        default_port = probe.getsockname()[1]
+
+    package = model_root / "fixture-model-AX8860-llama.cpp"
+    manifest = json.loads((package / "model.json").read_text(encoding="utf-8"))
+    manifest["launch"] = {"argv": ["--port", "{port}"], "default_port": default_port}
+    (package / "model.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with TestClient(create_app(control_settings(model_root, tmp_path))) as client:
+        started = client.post(
+            "/api/v1/models/fixture-model/start",
+            json={"profile": "default"},
+        )
+        assert started.status_code == 200
+        job_id = started.json()["job"]["job_id"]
+        job = wait_for_state(client, job_id, "running")
+        assert job["port"] == default_port
+
+        stopped = client.post(
+            "/api/v1/models/fixture-model/stop",
+            json={"timeout_seconds": 2},
+        )
+        assert stopped.status_code == 200
+        wait_for_state(client, job_id, "stopped")
+
+
 def test_second_model_is_rejected_while_limit_is_reached(model_root: Path, tmp_path: Path) -> None:
     second = write_model_package(model_root / "second-model")
     manifest_path = second / "model.json"

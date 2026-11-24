@@ -37,6 +37,42 @@ def test_scan_reports_non_executable_binary(model_root: Path) -> None:
     assert "artifact.binary is not executable" in record["errors"]
 
 
+def test_scan_finds_axdiffusion_package(model_root: Path) -> None:
+    package = model_root / "MiniMax-H3-Image-AX8860"
+    (package / "bin").mkdir(parents=True)
+    binary = package / "bin" / "axdiffusion-server"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    (package / "axdiffusion.json").write_text("{}", encoding="utf-8")
+    (package / "model.json").write_text(json.dumps({
+        "schema_version": 1,
+        "id": "minimax-h3-image",
+        "engine": "axdiffusion-server",
+        "artifacts": {
+            "binary": "bin/axdiffusion-server",
+            "model": "axdiffusion.json",
+        },
+        "capabilities": ["image_gen"],
+        "runtime_type": "service",
+        "max_context": 20480,
+        "estimated_cmm_mb": 34816,
+        "profiles": {"default": {"startup_timeout_seconds": 900}},
+        "launch": {
+            "argv": ["--model", ".", "--port", "{port}", "--out-dir", "output"],
+            "health_path": "/health",
+            "out_dir": "output",
+        },
+    }), encoding="utf-8")
+
+    record = scan_models(model_root)[0]
+
+    assert record["id"] == "minimax-h3-image"
+    assert record["valid"] is True
+    assert record["ready_to_start"] is True
+    assert record["capabilities"] == ["image_gen"]
+    assert record["manifest"]["launch"]["argv"][0] == "--model"
+
+
 def test_scan_reports_traversal_manifest(model_root: Path) -> None:
     package = model_root / "evil-model"
     package.mkdir()

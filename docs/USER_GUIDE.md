@@ -222,6 +222,45 @@ http://<board-ip>:18100/
 - `defaults` 是给上位机展示和生成请求用的模型包默认值，不是任意 shell 配置。
 - `metrics=true` 会为 llama-server 追加 `--metrics`。
 
+### 非 llama 运行时（图像生成等）
+
+`engine` 支持 `llama-server`、`llama-tts`、`llama-mtmd-cli`、`llama-cli` 和
+`axdiffusion-server`。非 llama 运行时通过 `launch` 模板启动，而不是 llama 参数：
+
+```json
+{
+  "engine": "axdiffusion-server",
+  "artifacts": {
+    "binary": "bin/axdiffusion-server",
+    "model": "axdiffusion.json"
+  },
+  "capabilities": ["image_gen"],
+  "launch": {
+    "argv": ["--model", ".", "--port", "{port}", "--out-dir", "output", "--lora-dir", "loras"],
+    "health_path": "/health",
+    "out_dir": "output",
+    "default_port": 18500
+  },
+  "api": {
+    "type": "openai-images",
+    "base_path": "/v1",
+    "endpoints": [
+      "/v1/images/generations",
+      "/v1/models",
+      "/v1/loras",
+      "/v1/jobs",
+      "/health"
+    ],
+    "web_ui": "/"
+  }
+}
+```
+
+- `launch.argv` 是参数数组，不经过 shell；支持 `{port}`、`{model_dir}`、`{out_dir}` 占位符。
+- `launch.default_port` 是该模型的首选端口（可为 18080–18089 之外的端口）；被占用时返回 409。
+- `api` 是给上位机/第三方 UI 看的元数据，Manager 不校验其业务语义，只校验格式。
+- 图像生成模型的完整调用方式见 [docs/image-generation.md](image-generation.md)。
+
 ## 本地开发
 
 要求：
