@@ -459,6 +459,6 @@ Browser → Third-party frontend backend → Model Manager / llama-server
 3. 停止模型前保留 `/slots` busy guard。
 4. 模型路径必须限制在 model root 内。
 5. 不提交真实 IP、token、密码或内部模型路径。
-6. 新 API 需要更新 README、OpenAPI 行为和测试。
+6. 新 API 需要更新 README / 用户指南、OpenAPI 行为和测试。
 7. 默认用小型 2B 模型做生命周期回归。
 8. 不能伪造 NPU utilization、ViT 耗时或后端未上报的性能指标。

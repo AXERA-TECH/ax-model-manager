@@ -3,6 +3,7 @@
 docs/*
 !docs/skills.md
 !docs/third-party-ui-integration.md
+!docs/USER_GUIDE.md
 docs-internal/
 __pycache__/
 .pytest_cache/

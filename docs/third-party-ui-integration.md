@@ -239,7 +239,7 @@ allowed_origins
 curl -X PUT "$MANAGER/api/v1/config" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"model_root": "/mnt/tangqi"}'
+  -d '{"model_root": "<model-root>"}'
 ```
 
 路径必须是存在的绝对目录，不能是 `/`、Manager data_dir 或其子目录。

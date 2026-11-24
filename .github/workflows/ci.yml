@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           internal_docs="$(
             git ls-files 'docs/*' |
-              grep -Ev '^docs/(skills|third-party-ui-integration)\.md$' || true
+              grep -Ev '^docs/(skills|third-party-ui-integration|USER_GUIDE)\.md$' || true
           )"
           if [ -n "$internal_docs" ]; then
             echo "::error::Unexpected internal docs/ file must not be published: $internal_docs"
