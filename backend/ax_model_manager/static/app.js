@@ -76,7 +76,8 @@ function formatSize(bytes) {
 function formatKb(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '—';
-  return `${(number / 1024 / 1024).toFixed(1)} GB`;
+  // tempmon and /proc report KiB; dividing twice yields GiB, not GB.
+  return `${(number / 1024 / 1024).toFixed(1)} GiB`;
 }
 
 function formatNumber(value, digits = 1) {
