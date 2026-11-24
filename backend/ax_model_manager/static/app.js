@@ -919,7 +919,9 @@ function stopModel(id) {
 function startImageGen(model, mode = 'start') {
   const endpoint = mode === 'switch'
     ? `/api/v1/models/${model.id}/switch-to`
-    : `/api/v1/models/${model.id}/start`;
+    : mode === 'restart'
+      ? `/api/v1/models/${model.id}/restart`
+      : `/api/v1/models/${model.id}/start`;
   control(endpoint, { profile: 'default' });
 }
 
@@ -950,6 +952,11 @@ function applyLaunchProfile(name) {
 }
 
 async function openLaunchDialog(model, mode = 'start') {
+  // Safety net: image-generation models never use the LLM options dialog,
+  // even if a stale caller or cached bundle reaches this function.
+  if ((model.capabilities || []).includes('image_gen')) {
+    return startImageGen(model, mode);
+  }
   try {
     const detail = await api(`/api/v1/models/${model.id}`);
     launchModel = model;
