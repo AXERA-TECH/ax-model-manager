@@ -3,7 +3,7 @@
 - 文档版本：0.3.1
 - 更新日期：2026-11-20
 - 适用对象：第三方上位机、桌面客户端、Web UI、测试台架开发团队
-- 板端组件：AXERA Model Manager + llama.cpp runtime
+- 板端组件：AXERA Model Manager + llama.cpp runtime + [tempmon](https://github.com/AXERA-TECH/tempmon)
 
 本文是给第三方 UI 团队的交付说明。它按当前已经实现的能力描述调用方式；没有实现的能力会明确列为不支持，避免 UI 侧假设错误。
 
@@ -37,6 +37,9 @@ Model Manager 是**管理平面**，不是推理数据面。第三方 UI 应同�
       ├── /slots
       ├── /props
       └── /metrics                # profile.metrics=true 时
+
+tempmon :8080（独立项目）
+  └── /api/stats                  # Manager resources API 的数据源
 ```
 
 ### 1.1 已支持
@@ -70,6 +73,11 @@ Model Manager 是**管理平面**，不是推理数据面。第三方 UI 应同�
 | 观察到的 TTFT / E2E | UI 记录请求开始、首 delta、final chunk 时间 |
 | 累计 Prometheus 指标 | profile / start 设置 `metrics=true`，访问 runtime `/metrics` |
 | 任务日志与审计 | Manager jobs / logs / audit API |
+
+> tempmon 是独立仓库
+> [AXERA-TECH/tempmon](https://github.com/AXERA-TECH/tempmon)，不包含在 Model Manager
+> 安装包内。部署 Manager 前请先按 tempmon README 安装并确认
+> `curl http://<board-ip>:8080/health` 正常。
 
 ### 1.2 当前不支持或只能部分支持
 

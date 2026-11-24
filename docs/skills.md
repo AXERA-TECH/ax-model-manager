@@ -17,6 +17,9 @@ manifest / profile 管理
 
 它不是推理数据面，不代理 prompt 和 response。聊天、图片、OCR、ASR、TTS 请求必须直接访问 Manager 启动出来的 llama-server 端口。
 
+板端资源监控依赖独立项目 [AXERA tempmon](https://github.com/AXERA-TECH/tempmon)；
+Model Manager 不包含 tempmon agent，部署前需先安装并确认 `http://<board-ip>:8080/health` 可访问。
+
 ## 2. 架构与调用面
 
 ```text
@@ -32,6 +35,10 @@ manifest / profile 管理
       ├── /v1/chat/completions
       ├── /slots
       └── /metrics，可选，由 profile.metrics 开启
+
+板端只读监控：
+  tempmon agent :8080
+      └── /api/stats
 ```
 
 推荐职责划分：
@@ -40,11 +47,12 @@ manifest / profile 管理
 |---|---|
 | 模型列表、启动参数、能力 | Manager API |
 | 启动 / 停止状态和日志 | Manager API |
-| OS / CMM / CPU / 网络 / 温度 / 磁盘 | Manager resources API |
+| OS / CMM / CPU / 网络 / 温度 / 磁盘 | Manager resources API（原始数据来自 tempmon） |
 | Chat / Vision / OCR / ASR / TTS 推理 | llama-server |
 | 单请求 usage / timings | llama-server final response |
 | Prometheus 累计指标 | llama-server `/metrics` |
 | 快速人工聊天冒烟 | Manager 内嵌 Lite WebUI，实际请求仍直连 llama-server |
+| 板端原始资源数据 | tempmon `:8080/api/stats` |
 
 ## 3. 基本变量与认证
 
@@ -341,7 +349,7 @@ curl -H "Authorization: Bearer $TOKEN" "$MANAGER/api/v1/resources"
 - 第一次采样可能没有 CPU percent；从第二次开始稳定输出。
 - max 是 Manager 进程内统计，Manager 重启后重建。
 - reset 只清空 max，不改变 current。
-- 当前没有真实 NPU utilization；不要用 NPU 频率或温度伪装占用率。
+- NPU utilization 来自 tempmon 2.2.0+ 的 `npu.util_avg`；不要用 NPU 频率或温度伪装占用率。
 
 ### 清除最大值
 

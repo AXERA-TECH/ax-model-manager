@@ -64,7 +64,7 @@ Chat / Vision / OCR / ASR / TTS clients
 
 | 服务 | 默认端口 | 说明 |
 |---|---:|---|
-| tempmon | 8080 | 只读板卡监控 agent；systemd 控制模式的启动前资源检查依赖它 |
+| [tempmon](https://github.com/AXERA-TECH/tempmon) | 8080 | 只读板卡监控 agent；systemd 控制模式的启动前资源检查依赖它 |
 | llama-server | 18080-18089 | 推理端口池，可同时运行多个不同模型 |
 | Model Manager | 18090 | 管理 API、Web Admin UI、OpenAPI 文档 |
 
@@ -260,7 +260,9 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 1. AX8860 / AX8860P 板卡可运行 Python 3.10+。
 2. 使用 systemd。
 3. 模型包已放在配置的模型根目录，例如 `<模型文件夹>`。
-4. tempmon agent 已在板端 `8080` 端口运行。systemd 控制模式下，启动前资源检查依赖它。
+4. tempmon agent 已在板端 `8080` 端口运行。tempmon **不包含在本仓库中**，请从
+   [AXERA-TECH/tempmon](https://github.com/AXERA-TECH/tempmon) 获取并按其 README 安装。
+   systemd 控制模式下，启动前资源检查依赖它。
 5. llama-server 可执行文件、GGUF、mmproj、kernels 等由模型包自带。
 
 ### 安装
@@ -687,7 +689,7 @@ Release 包不包含 `.git`、`.venv`、`dist`、`.secrets` 和本地 fixture。
 
 - 不负责模型下载或 Hugging Face 差异化更新。
 - 不代理 OpenAI 推理流量。
-- 没有 NPU utilization；当前提供温度、频率、进程和内存状态。
+- NPU utilization 由 tempmon 2.2.0+ 提供（`npu.util_avg`）；Manager 只做透传和展示。
 - 资源 max 保存在 Manager 进程内，Manager 重启后重建。
 - llama-server 当前由 Manager 固定以 `-np 1` 启动，多个请求会在同一服务内排队。
 - Manager 的多模型并行不等价于同一个模型的多 batch 并行推理。
@@ -715,6 +717,12 @@ scripts/
 
 更偏项目维护者和 coding agent 的架构上下文、开发守则见
 [`docs/skills.md`](docs/skills.md)。
+
+## 相关项目
+
+- [AXERA tempmon](https://github.com/AXERA-TECH/tempmon) —
+  板端只读监控 agent，提供 OS / CMM / NPU / 网络状态。Model Manager 的资源监控
+  依赖它在板端 `8080` 端口运行；安装与配置请看 tempmon 仓库的 README。
 
 ## 版本
 
