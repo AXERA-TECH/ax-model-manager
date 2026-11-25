@@ -373,7 +373,12 @@ code, pre, .mono {
 [data-theme="dark"] .demo-frame { background: #0b0f17; }
 
 /* ---------- Jobs / audit ---------- */
-.two-col { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.two-col { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+#tab-jobs.active { display: flex; flex-direction: column; height: calc(100vh - 146px); min-height: 520px; }
+#tab-jobs .two-col { flex: 1; min-height: 0; align-items: stretch; }
+#tab-jobs .two-col > .panel { height: 100%; min-height: 0; margin-bottom: 0; display: flex; flex-direction: column; }
+#tab-jobs .jobs { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+#tab-jobs .table-wrap { flex: 1; min-height: 0; max-height: none; overflow: auto; }
 .jobs { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 150px); overflow: auto; padding-right: 2px; }
 .job { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
 .job-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
