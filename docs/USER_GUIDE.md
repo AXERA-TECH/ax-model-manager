@@ -114,6 +114,7 @@ Chat / Vision / OCR / ASR / TTS clients
 - 概览：设备状态、CPU / NPU 使用率、CMM / OS 内存、SoC 温度环形指标、快速验证入口、OpenAI 兼容 API。
 - OpenAI 兼容 API：多个运行时用标签切换，一次显示一个模型的 Base URL / 模型 ID / 请求示例；生图模型显示 Images API 和网页入口。
 - 模型：模型卡片、搜索、能力筛选、状态筛选（全部 / 已启动 / 已停止 / 可启动 / 异常）、详情、manifest / artifacts 校验、启动参数。
+- 启动参数的「预览命令」以 shell 脚本格式输出：`cd`、`export`、反斜杠续行，并提供「复制命令」。
 - 验证：LiteWebUI 嵌入和接口地址。
 - 任务：Jobs、日志尾部、错误高亮、日志下载、Audit 记录。
 - 设置：模型根目录、Manager 端口、进程后端、Agent / BSP 信息、主题。

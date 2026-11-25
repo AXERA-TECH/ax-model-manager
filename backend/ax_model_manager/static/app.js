@@ -15,6 +15,7 @@ let currentDemoUrl = '';
 let currentConfig = {};
 let selectedApiModel = null;
 let confirmResolve = null;
+let launchPreviewCommand = '';
 const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
@@ -1188,6 +1189,9 @@ async function openLaunchDialog(model, mode = 'start') {
     launchModel = model;
     launchMode = mode;
     launchManifest = detail.manifest || {};
+    launchPreviewCommand = '';
+    $('launch-preview-bar').classList.add('hidden');
+    $('launch-preview-output').classList.add('hidden');
     $('launch-title').textContent = {
       start: '启动模型',
       restart: '重启模型',
@@ -1320,6 +1324,48 @@ async function diffLaunchProfile() {
   }
 }
 
+function shellQuote(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(text)) return text;
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function relativeToCwd(value, cwd) {
+  if (cwd && value.startsWith(`${cwd}/`)) return `./${value.slice(cwd.length + 1)}`;
+  return value;
+}
+
+function buildLaunchCommand(result) {
+  const cwd = result.cwd || '';
+  const env = Object.entries(result.env || {});
+  const argv = result.argv || [];
+  const lines = [];
+  if (cwd) lines.push(`cd ${shellQuote(cwd)}`, '');
+  for (const [key, value] of env) lines.push(`export ${key}=${shellQuote(value)}`);
+  if (env.length) lines.push('');
+
+  const args = argv.map(value => relativeToCwd(value, cwd));
+  const groups = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    const next = args[index + 1];
+    if (argument.startsWith('-') && next !== undefined && !next.startsWith('-')) {
+      groups.push([argument, next]);
+      index += 1;
+    } else {
+      groups.push([argument]);
+    }
+  }
+  const parts = groups.map(group => group.map(shellQuote).join(' '));
+  const command = parts.map((part, index) => {
+    const prefix = index === 0 ? '' : '  ';
+    const suffix = index === parts.length - 1 ? '' : ' \\';
+    return `${prefix}${part}${suffix}`;
+  }).join('\n');
+  lines.push(command);
+  return lines.join('\n');
+}
+
 async function previewLaunchCommand() {
   if (!launchModel) return;
   const payload = { ...currentLaunchPayload() };
@@ -1330,15 +1376,12 @@ async function previewLaunchCommand() {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    const command = buildLaunchCommand(result);
+    launchPreviewCommand = command;
+    $('launch-preview-bar').classList.remove('hidden');
     const output = $('launch-preview-output');
     output.classList.remove('hidden');
-    output.textContent = [
-      `cwd: ${result.cwd}`,
-      `env: ${Object.entries(result.env || {}).map(([key, value]) => `${key}=${value}`).join(' ')}`,
-      `port: ${result.port}`,
-      'argv:',
-      result.argv.map((argument, index) => `${String(index).padStart(2)} ${argument}`).join('\n'),
-    ].join('\n');
+    output.textContent = command;
   } catch (error) {
     showAlert(error.message);
   }
@@ -1469,6 +1512,9 @@ $('launch-reset-profile').onclick = resetLaunchProfile;
 $('launch-delete-profile').onclick = deleteLaunchProfile;
 $('launch-diff-profile').onclick = diffLaunchProfile;
 $('launch-preview').onclick = previewLaunchCommand;
+$('copy-launch-command').onclick = () => {
+  if (launchPreviewCommand) copyText(launchPreviewCommand, $('copy-launch-command'));
+};
 $('launch-cancel').onclick = () => $('launch-dialog').close();
 $('model-dialog-close').onclick = () => $('model-dialog').close();
 $('confirm-ok').onclick = () => closeConfirm(true);
