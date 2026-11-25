@@ -112,7 +112,7 @@ Chat / Vision / OCR / ASR / TTS clients
 内置 Web UI 采用「概览 / 模型 / 验证 / 任务 / 设置」五个标签：
 
 - 概览：设备状态、CMM / OS / NPU 环形指标、快速验证入口、OpenAI 兼容 API。
-- 模型：模型卡片、搜索与能力筛选、详情、manifest / artifacts 校验、启动参数。
+- 模型：模型卡片、搜索、能力筛选、状态筛选（全部 / 已启动 / 已停止 / 可启动 / 异常）、详情、manifest / artifacts 校验、启动参数。
 - 验证：LiteWebUI 嵌入和接口地址。
 - 任务：Jobs、日志尾部、错误高亮、日志下载、Audit 记录。
 - 设置：模型根目录、Manager 端口、进程后端、Agent / BSP 信息、主题。

@@ -543,16 +543,23 @@ function renderModels(models, config = {}) {
   const showInvalid = $('show-invalid').checked;
   const query = ($('model-search')?.value || '').trim().toLowerCase();
   const capability = $('capability-filter')?.value || '';
+  const statusFilter = $('status-filter')?.value || '';
   const container = $('models');
   const anyActive = models.some(model => Boolean(model.active_job));
   const activeCount = models.filter(model => model.active_job?.action === 'start').length;
   const modelLimit = Number(config.max_running_models || 1);
   container.replaceChildren();
   for (const model of models) {
-    if (!showInvalid && !model.valid) continue;
+    if (!showInvalid && !model.valid && statusFilter !== 'invalid') continue;
     if (query && !`${model.name} ${model.id} ${(model.capabilities || []).join(' ')}`.toLowerCase().includes(query)) continue;
     if (capability && !(model.capabilities || []).includes(capability)) continue;
     const active = model.active_job;
+    const isStarted = Boolean(active) && !['stopped', 'failed'].includes(active?.state);
+    const isStopped = !active || ['stopped', 'failed'].includes(active?.state);
+    if (statusFilter === 'started' && !isStarted) continue;
+    if (statusFilter === 'stopped' && !isStopped) continue;
+    if (statusFilter === 'ready' && (active || !model.ready_to_start)) continue;
+    if (statusFilter === 'invalid' && model.valid) continue;
     const isTask = model.runtime_type === 'task';
     const isImageGen = (model.capabilities || []).includes('image_gen');
     const state = active?.state || (model.ready_to_start ? 'ready' : model.valid ? 'stopped' : 'invalid');
@@ -1358,6 +1365,7 @@ $('theme-toggle').onclick = () => {
 $('show-invalid').onchange = () => renderModels(modelRows, currentConfig);
 $('model-search').addEventListener('input', () => renderModels(modelRows, currentConfig));
 $('capability-filter').addEventListener('change', () => renderModels(modelRows, currentConfig));
+$('status-filter').addEventListener('change', () => renderModels(modelRows, currentConfig));
 $('open-settings').onclick = openSettings;
 $('save-model-limit').onclick = saveModelLimit;
 $('lite-webui-reload').onclick = () => {

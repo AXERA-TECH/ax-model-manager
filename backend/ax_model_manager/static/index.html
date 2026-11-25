@@ -122,6 +122,13 @@
         <option value="audio">音频</option>
         <option value="tts">语音合成</option>
       </select>
+      <select id="status-filter" class="select" aria-label="状态筛选">
+        <option value="">全部状态</option>
+        <option value="started">已启动</option>
+        <option value="stopped">已停止</option>
+        <option value="ready">可启动</option>
+        <option value="invalid">异常</option>
+      </select>
       <label class="checkbox"><input id="show-invalid" type="checkbox"> 显示无效</label>
       <div class="toolbar-right">
         <label class="inline-field">并发上限
