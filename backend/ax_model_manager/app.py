@@ -274,6 +274,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for item in records:
             row = summary(item)
             active = app.state.jobs.active_for_model(str(item["id"]))
+            stopping = any(
+                job.model_id == str(item["id"]) and job.state == "stopping"
+                for job in app.state.jobs.active()
+            )
+            row["stopping"] = stopping
             if active:
                 row["state"] = active.state
                 row["active_job"] = active.public()
@@ -330,6 +335,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def model_detail(model_id: str) -> dict[str, Any]:
         record = find_model(model_id)
         active = app.state.jobs.active_for_model(model_id)
+        record["stopping"] = any(
+            job.model_id == model_id and job.state == "stopping"
+            for job in app.state.jobs.active()
+        )
         if active:
             record["state"] = active.state
             record["active_job"] = active.public()
@@ -965,7 +974,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             original_log_path = None
             if original_job_match:
                 candidate = (
-                    request.app.state.settings.data_dir
+                    app.state.settings.data_dir
                     / "logs"
                     / f"{original_job_match.group(0)}.log"
                 )
@@ -1286,6 +1295,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if body.debug_busy and request.app.state.settings.process_backend != "fake-subprocess":
             raise HTTPException(status_code=400, detail="debug_busy is only available with fake-subprocess")
 
+        if any(
+            job.model_id == model_id and job.state == "stopping"
+            for job in request.app.state.jobs.active()
+        ):
+            raise HTTPException(status_code=409, detail="model is stopping")
         existing = request.app.state.jobs.active_for_model(model_id)
         if existing:
             return existing

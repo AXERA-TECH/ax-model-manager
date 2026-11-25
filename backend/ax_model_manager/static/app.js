@@ -219,7 +219,7 @@ function renderActiveApi(models) {
   const statePill = $('api-state');
   container.replaceChildren();
 
-  const activeModels = models.filter(model => model.active_job?.port);
+  const activeModels = models.filter(model => model.active_job?.port && !model.stopping);
   if (!activeModels.length) {
     selectedApiModel = null;
     statePill.className = 'pill';
@@ -327,7 +327,7 @@ function renderLiteWebUi(models) {
   const statePill = $('lite-webui-state');
   const openLink = $('lite-webui-open');
   const reloadButton = $('lite-webui-reload');
-  const activeModels = models.filter(model => model.active_job?.port);
+  const activeModels = models.filter(model => model.active_job?.port && !model.stopping);
   const desiredUrl = liteWebUiUrl(activeModels[0]);
 
   if (!desiredUrl) {
@@ -632,8 +632,8 @@ function renderModels(models, config = {}) {
   const capability = $('capability-filter')?.value || '';
   const statusFilter = $('status-filter')?.value || '';
   const container = $('models');
-  const anyActive = models.some(model => Boolean(model.active_job));
-  const activeCount = models.filter(model => model.active_job?.action === 'start').length;
+  const anyActive = models.some(model => Boolean(model.active_job) && !model.stopping);
+  const activeCount = models.filter(model => model.active_job?.action === 'start' && !model.stopping).length;
   const modelLimit = Number(config.max_running_models || 1);
   container.replaceChildren();
   for (const model of models) {
@@ -641,15 +641,16 @@ function renderModels(models, config = {}) {
     if (query && !`${model.name} ${model.id} ${(model.capabilities || []).join(' ')}`.toLowerCase().includes(query)) continue;
     if (capability && !(model.capabilities || []).includes(capability)) continue;
     const active = model.active_job;
-    const isStarted = Boolean(active) && !['stopped', 'failed'].includes(active?.state);
-    const isStopped = !active || ['stopped', 'failed'].includes(active?.state);
+    const stopping = Boolean(model.stopping) || active?.state === 'stopping';
+    const isStarted = (Boolean(active) && !['stopped', 'failed'].includes(active?.state)) || stopping;
+    const isStopped = (!active || ['stopped', 'failed'].includes(active?.state)) && !stopping;
     if (statusFilter === 'started' && !isStarted) continue;
     if (statusFilter === 'stopped' && !isStopped) continue;
-    if (statusFilter === 'ready' && (active || !model.ready_to_start)) continue;
+    if (statusFilter === 'ready' && (active || stopping || !model.ready_to_start)) continue;
     if (statusFilter === 'invalid' && model.valid) continue;
     const isTask = model.runtime_type === 'task';
     const isImageGen = (model.capabilities || []).includes('image_gen');
-    const state = active?.state || (model.ready_to_start ? 'ready' : model.valid ? 'stopped' : 'invalid');
+    const state = stopping ? 'stopping' : (active?.state || (model.ready_to_start ? 'ready' : model.valid ? 'stopped' : 'invalid'));
     const card = document.createElement('article');
     card.className = 'model-card';
 
@@ -680,7 +681,7 @@ function renderModels(models, config = {}) {
       model.api_type || '',
       model.runtime_type === 'task' ? '一次性任务' : '',
       ...(model.profiles || []),
-      active?.port ? `:${active.port}` : '',
+      active?.port && !stopping ? `:${active.port}` : '',
     ].filter(Boolean)) {
       const pill = document.createElement('span');
       pill.className = 'pill';
@@ -712,7 +713,7 @@ function renderModels(models, config = {}) {
         confirm.onclick = () => control(`/api/v1/models/${model.id}/manifest/confirm`, {});
         actions.append(confirm);
       }
-      if (!active && model.ready_to_start && !isTask) {
+      if (!active && model.ready_to_start && !isTask && !stopping) {
         const start = document.createElement('button');
         start.className = 'small primary';
         start.textContent = isImageGen
@@ -740,26 +741,34 @@ function renderModels(models, config = {}) {
           : openLaunchDialog(model, 'switch'));
         actions.append(switchButton);
       }
-      if (active) {
-        const stop = document.createElement('button');
-        stop.className = 'small danger';
-        stop.textContent = '停止';
-        stop.onclick = () => stopModel(model.id);
-        actions.append(stop);
-        const restart = document.createElement('button');
-        restart.className = 'small';
-        restart.textContent = 'Restart…';
-        restart.onclick = () => (isImageGen
-          ? control(`/api/v1/models/${model.id}/restart`, { profile: 'default' })
-          : openLaunchDialog(model, 'restart'));
-        actions.append(restart);
-        if (isImageGen && active.port) {
-          const open = document.createElement('button');
-          open.className = 'small';
-          open.textContent = '打开网页';
-          open.title = `打开 ${active.port} 端口的生图网页`;
-          open.onclick = () => window.open(`http://${window.location.hostname}:${active.port}/`, '_blank');
-          actions.append(open);
+      if (active || stopping) {
+        if (stopping) {
+          const pending = document.createElement('button');
+          pending.className = 'small';
+          pending.disabled = true;
+          pending.textContent = '停止中…';
+          actions.append(pending);
+        } else {
+          const stop = document.createElement('button');
+          stop.className = 'small danger';
+          stop.textContent = '停止';
+          stop.onclick = () => stopModel(model.id);
+          actions.append(stop);
+          const restart = document.createElement('button');
+          restart.className = 'small';
+          restart.textContent = '重启…';
+          restart.onclick = () => (isImageGen
+            ? control(`/api/v1/models/${model.id}/restart`, { profile: 'default' })
+            : openLaunchDialog(model, 'restart'));
+          actions.append(restart);
+          if (isImageGen && active.port) {
+            const open = document.createElement('button');
+            open.className = 'small';
+            open.textContent = '打开网页';
+            open.title = `打开 ${active.port} 端口的生图网页`;
+            open.onclick = () => window.open(`http://${window.location.hostname}:${active.port}/`, '_blank');
+            actions.append(open);
+          }
         }
       }
     }
