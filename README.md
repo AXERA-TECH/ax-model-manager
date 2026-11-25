@@ -112,6 +112,19 @@ http://<board-ip>:18090/
 
 ![Model Manager · 模型管理](assets/web-admin-models-v2.png)
 
+## Web Admin UI
+
+界面为中文，分为五个标签：
+
+- **概览**：设备状态、CPU / NPU 使用率、OS / CMM 内存、DDR 带宽、SoC 温度、快速验证入口、OpenAI 兼容 API。
+- **模型**：模型卡片、搜索、能力筛选、状态筛选（全部 / 已启动 / 已停止 / 可启动 / 异常）、详情、启动参数。
+- **验证**：LiteWebUI 嵌入、快速入口、接口地址。
+- **任务**：Jobs、终端风格日志、审计。
+- **设置**：模型根目录、Manager 端口、进程后端、Agent / BSP、主题。
+
+多个模型运行时，API 面板用标签切换，一次显示一个模型的 Base URL / 模型 ID / 请求示例。
+「预览命令」输出可直接复制的 shell 脚本（`cd` + `export` + 反斜杠续行）。
+
 ## 主要能力
 
 - 模型发现、`model.json` 校验、artifact 检查
@@ -119,9 +132,12 @@ http://<board-ip>:18090/
 - start / stop / restart / switch
 - 多模型端口池：18080–18089
 - 启动前 CMM / OS / SoC 温度检查
-- 停止前 `/slots` busy guard
-- job、日志、审计、runtime 恢复
-- Web Admin UI + 可选 Lite WebUI 聊天演示
+- 停止前 `/slots` busy guard，停止过程显示「停止中」并禁止重复启动
+- job、终端风格日志、审计、runtime 恢复
+- 中文 Web Admin UI（概览 / 模型 / 验证 / 任务 / 设置）+ 可选 Lite WebUI 聊天演示
+- 模型状态筛选：全部 / 已启动 / 已停止 / 可启动 / 异常
+- 多运行时 API 标签切换，生图模型显示 Images API 和网页入口
+- 模型目录扫描 10 秒缓存，「刷新」按钮强制重扫
 - OS / CMM / CPU / 网络 / NPU / DDR 带宽 / llama RSS 资源监控
 - 模型根目录可在 Web UI 的 Settings 中修改
 
