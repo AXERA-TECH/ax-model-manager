@@ -109,18 +109,16 @@ Chat / Vision / OCR / ASR / TTS clients
 
 ### Web Admin UI
 
-内置 Web UI 提供：
+内置 Web UI 采用「概览 / 模型 / 验证 / 任务 / 设置」五个标签：
 
-- Dashboard 和设备状态。
-- 模型卡片、详情、manifest 和 artifacts 校验结果。
-- 每个模型的启动参数配置。
-- Jobs、日志尾部、错误高亮、日志下载。
-- Runtime 和 OpenAI-compatible endpoint 信息。
-- 可选 Lite WebUI 快速聊天演示。
-- Audit 记录。
+- 概览：设备状态、CMM / OS / NPU 环形指标、快速验证入口、OpenAI 兼容 API。
+- 模型：模型卡片、搜索与能力筛选、详情、manifest / artifacts 校验、启动参数。
+- 验证：LiteWebUI 嵌入和接口地址。
+- 任务：Jobs、日志尾部、错误高亮、日志下载、Audit 记录。
+- 设置：模型根目录、Manager 端口、进程后端、Agent / BSP 信息、主题。
 - 明暗主题。
 
-![AXERA Model Manager Web Admin UI](assets/web-admin-ui.png)
+![AXERA Model Manager Web Admin UI](../assets/web-admin-ui-v2.png)
 
 #### Lite WebUI 快速演示
 
@@ -429,7 +427,7 @@ http://<board-ip>:18090/docs
 
 ### 修改模型根目录
 
-Web Admin UI 右上角 `Settings` 可以修改 `model_root`：
+Web Admin UI 右上角 `⚙`，或「设置」标签里的「修改配置」，可以修改 `model_root`：
 
 ```text
 Model root directory

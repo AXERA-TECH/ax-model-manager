@@ -18,7 +18,7 @@ const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 tokenInput.value = localStorage.getItem('axmm.token') || '';
 
 function applyTheme(theme) {
-  const selected = theme === 'light' ? 'light' : 'dark';
+  const selected = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = selected;
   localStorage.setItem('axmm.theme', selected);
   $('theme-toggle').textContent = selected === 'light' ? '🌙' : '☀️';
@@ -298,6 +298,19 @@ function summaryPill(label, title = '') {
   return pill;
 }
 
+function setRing(key, percent, value, label) {
+  const circle = $(`ring-${key}`);
+  if (!circle) return;
+  const circumference = 2 * Math.PI * 46;
+  const bounded = Math.min(100, Math.max(0, Number(percent) || 0));
+  circle.style.strokeDasharray = `${circumference}`;
+  circle.style.strokeDashoffset = `${circumference * (1 - bounded / 100)}`;
+  const valueNode = $(`ring-${key}-value`);
+  if (valueNode) valueNode.textContent = value;
+  const labelNode = $(`ring-${key}-label`);
+  if (labelNode) labelNode.textContent = label;
+}
+
 function renderDeviceResources(resources = {}) {
   const status = $('device-status');
   const identity = $('device-identity');
@@ -307,7 +320,12 @@ function renderDeviceResources(resources = {}) {
 
   if (!resources.available) {
     status.className = 'pill failed';
-    status.textContent = 'tempmon unavailable';
+    status.textContent = '设备离线';
+    $('device-name').textContent = 'AX8860P 开发板';
+    $('device-sub').textContent = `${location.hostname} · 设备信息不可用`;
+    setRing('cmm', 0, '—', 'CMM');
+    setRing('os', 0, '—', 'OS');
+    setRing('npu', 0, '—', 'NPU');
     identity.append(summaryPill('Device metrics unavailable'));
     const message = document.createElement('p');
     message.className = 'message';
@@ -318,7 +336,7 @@ function renderDeviceResources(resources = {}) {
   }
 
   status.className = 'pill running';
-  status.textContent = 'tempmon online';
+  status.textContent = '设备在线';
   const agent = resources.agent || {};
   const load = resources.load || {};
   const cpu = resources.cpu || {};
@@ -329,6 +347,14 @@ function renderDeviceResources(resources = {}) {
   const llama = resources.llama || {};
   const usedMemory = Number(memory.total_kb || 0) - Number(memory.avail_kb || 0);
   const maxTemp = Number(resources.npu_max_temp_c);
+  const cmmUsed = Number(cmm.used_kb || 0);
+  const cmmTotal = Number(cmm.total_kb || 0);
+  const osTotal = Number(memory.total_kb || 0);
+  setRing('cmm', cmmTotal ? cmmUsed / cmmTotal * 100 : 0, cmmTotal ? (cmmUsed / 1024 / 1024).toFixed(1) : '—', cmmTotal ? `CMM / ${(cmmTotal / 1024 / 1024).toFixed(0)} GiB` : 'CMM');
+  setRing('os', osTotal ? usedMemory / osTotal * 100 : 0, osTotal ? (usedMemory / 1024 / 1024).toFixed(1) : '—', osTotal ? `OS / ${(osTotal / 1024 / 1024).toFixed(0)} GiB` : 'OS');
+  setRing('npu', Number.isFinite(maxTemp) ? maxTemp / 85 * 100 : 0, Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°` : '—', 'NPU 温度');
+  $('device-name').textContent = 'AX8860P 开发板';
+  $('device-sub').textContent = `${location.hostname} · ${agent.bsp_version || 'BSP —'} · agent ${agent.version || '—'}`;
 
   // Only the most decision-relevant metrics are always visible. Detailed
   // identity, per-zone temperatures, clocks, and filesystem usage stay folded.
@@ -479,9 +505,20 @@ function renderRuntimeReconciliation(reconciliation = {}) {
   }
 }
 
+function modelIcon(model) {
+  const caps = model.capabilities || [];
+  if (caps.includes('image_gen')) return { text: 'H3', cls: 'purple' };
+  if (caps.includes('tts')) return { text: 'TTS', cls: 'orange' };
+  if (caps.includes('audio')) return { text: 'ASR', cls: 'green' };
+  if (caps.includes('image')) return { text: 'OCR', cls: 'green' };
+  return { text: 'LLM', cls: 'blue' };
+}
+
 function renderModels(models, config = {}) {
   modelRows = models;
   const showInvalid = $('show-invalid').checked;
+  const query = ($('model-search')?.value || '').trim().toLowerCase();
+  const capability = $('capability-filter')?.value || '';
   const container = $('models');
   const anyActive = models.some(model => Boolean(model.active_job));
   const activeCount = models.filter(model => model.active_job?.action === 'start').length;
@@ -489,6 +526,8 @@ function renderModels(models, config = {}) {
   container.replaceChildren();
   for (const model of models) {
     if (!showInvalid && !model.valid) continue;
+    if (query && !`${model.name} ${model.id} ${(model.capabilities || []).join(' ')}`.toLowerCase().includes(query)) continue;
+    if (capability && !(model.capabilities || []).includes(capability)) continue;
     const active = model.active_job;
     const isTask = model.runtime_type === 'task';
     const isImageGen = (model.capabilities || []).includes('image_gen');
@@ -504,7 +543,11 @@ function renderModels(models, config = {}) {
     const statePill = document.createElement('span');
     statePill.className = `pill ${stateClass(state)}`;
     statePill.textContent = state;
-    title.append(name, statePill);
+    const icon = document.createElement('div');
+    const iconInfo = modelIcon(model);
+    icon.className = `model-icon ${iconInfo.cls}`;
+    icon.textContent = iconInfo.text;
+    title.append(icon, name, statePill);
 
     const id = document.createElement('div');
     id.className = 'model-id';
@@ -691,7 +734,31 @@ async function refresh() {
       limitSelect.value = String(dashboard.configured_model_limit || dashboard.config?.max_running_models || 1);
     }
     $('save-model-limit').disabled = !controlEnabled;
-    renderDeviceResources(dashboard.resources || {});
+    const resources = dashboard.resources || {};
+    $('settings-model-root').textContent = dashboard.config?.model_root || '—';
+    $('settings-manager-port').textContent = String(dashboard.config?.manager_port || '—');
+    $('settings-backend').textContent = dashboard.config?.process_backend || '—';
+    $('settings-device-ip').textContent = location.hostname;
+    $('settings-agent').textContent = resources.agent?.version || '—';
+    $('settings-bsp').textContent = resources.agent?.bsp_version || '—';
+    const topStatus = $('top-status');
+    if (topStatus) {
+      const online = Boolean(resources.available);
+      topStatus.className = `status-pill ${online ? 'online' : 'offline'}`;
+      topStatus.textContent = online ? '已连接' : '未连接';
+    }
+    const docsUrl = `${location.origin}/docs`;
+    const managerUrl = `${location.origin}/`;
+    const liteUrl = `${location.protocol}//${location.hostname}:18100/`;
+    $('settings-docs-link').href = docsUrl;
+    $('settings-litewebui').href = liteUrl;
+    $('verify-manager-link').href = managerUrl;
+    $('verify-manager-link').textContent = managerUrl;
+    $('verify-docs-link').href = docsUrl;
+    $('verify-docs-link').textContent = docsUrl;
+    $('verify-litewebui-link').href = liteUrl;
+    $('verify-litewebui-link').textContent = liteUrl;
+    renderDeviceResources(resources);
     renderRuntimeReconciliation(dashboard.runtime_reconciliation || {});
     renderModels(models.models, dashboard.config || {});
     renderActiveApi(models.models);
@@ -1177,6 +1244,35 @@ function startLogPolling() {
   logTimer = setInterval(() => loadLog(), 1000);
 }
 
+function switchTab(name) {
+  document.querySelectorAll('.tab-link').forEach(link => {
+    link.classList.toggle('active', link.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `tab-${name}`);
+  });
+  if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
+}
+
+document.querySelectorAll('.tab-link').forEach(link => {
+  link.addEventListener('click', event => {
+    event.preventDefault();
+    switchTab(link.dataset.tab);
+  });
+});
+
+function openDemo(kind) {
+  const active = modelRows.filter(model => model.active_job?.port);
+  if (kind === 'image') {
+    const h3 = active.find(model => (model.capabilities || []).includes('image_gen'));
+    if (!h3) return showAlert('请先在「模型」页启动 H3 Image');
+    window.open(`http://${location.hostname}:${h3.active_job.port}/`, '_blank');
+    return;
+  }
+  if (!active.length) return showAlert('请先在「模型」页启动一个模型');
+  window.open(liteWebUiUrl(active[0]), '_blank');
+}
+
 function scheduleRefresh() {
   if (timer) clearInterval(timer);
   timer = setInterval(refresh, 2500);
@@ -1185,6 +1281,7 @@ function scheduleRefresh() {
 $('connect').onclick = () => {
   localStorage.setItem('axmm.token', tokenInput.value.trim());
   refresh();
+  scheduleRefresh();
 };
 $('refresh').onclick = refresh;
 $('settings').onclick = openSettings;
@@ -1194,7 +1291,10 @@ $('save-model-root').onclick = saveModelRoot;
 $('theme-toggle').onclick = () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 };
-$('show-invalid').onchange = () => renderModels(modelRows);
+$('show-invalid').onchange = () => renderModels(modelRows, currentConfig);
+$('model-search').addEventListener('input', () => renderModels(modelRows, currentConfig));
+$('capability-filter').addEventListener('change', () => renderModels(modelRows, currentConfig));
+$('open-settings').onclick = openSettings;
 $('save-model-limit').onclick = saveModelLimit;
 $('lite-webui-reload').onclick = () => {
   const frame = $('lite-webui-frame');
@@ -1225,7 +1325,18 @@ $('auto-log').onchange = startLogPolling;
 $('log-dialog').addEventListener('close', stopLogPolling);
 tokenInput.addEventListener('keydown', event => { if (event.key === 'Enter') $('connect').click(); });
 
-applyTheme(localStorage.getItem('axmm.theme'));
+document.querySelectorAll('[data-demo]').forEach(button => {
+  button.addEventListener('click', () => openDemo(button.dataset.demo));
+});
 
-refresh();
-scheduleRefresh();
+applyTheme(localStorage.getItem('axmm.theme') || 'light');
+
+const initialTab = location.hash.slice(1);
+if (initialTab && document.getElementById(`tab-${initialTab}`)) switchTab(initialTab);
+
+if (tokenInput.value.trim()) {
+  refresh();
+  scheduleRefresh();
+} else {
+  showAlert('请输入 Bearer token 后点击连接');
+}

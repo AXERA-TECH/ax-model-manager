@@ -86,9 +86,9 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         index = client.get("/")
         assert index.status_code == 200
         assert "AXERA Model Manager" in index.text
-        assert "OpenAI-compatible API" in index.text
+        assert "OpenAI 兼容 API" in index.text
         assert 'id="theme-toggle"' in index.text
-        assert 'id="device-details"' in index.text
+        assert 'id="tab-overview"' in index.text
         assert 'id="metric-os-memory"' not in index.text
         assert 'id="metric-cmm"' not in index.text
         assert 'id="device-grid"' in index.text
@@ -103,13 +103,11 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert 'id="model-root-input"' in index.text
         assert 'id="validate-model-root"' in index.text
         assert 'id="save-model-root"' in index.text
-        assert "Refresh / Scan" in index.text
-        assert "height: var(--model-list-height)" in (
-            Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
-        ).read_text(encoding="utf-8")
-        assert ".side .panel { display:flex; flex-direction:column; min-height:0; margin-bottom:0; }" in (
-            Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
-        ).read_text(encoding="utf-8")
+        assert 'id="refresh"' in index.text
+        styles = (Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css").read_text(encoding="utf-8")
+        assert ".tab-panel { display: none; }" in styles
+        assert ".tab-panel.active { display: block; animation: fade .18s ease; }" in styles
+        assert ".model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }" in styles
         assert 'id="launch-dialog"' in index.text
         assert 'id="launch-force"' in index.text
         assert '<option value="4096">4K</option>' in index.text
@@ -118,7 +116,7 @@ def test_static_admin_ui_is_served(model_root: Path, tmp_path: Path) -> None:
         assert '<option value="16384">16K</option>' in index.text
         assert '<option value="262144">256K</option>' in index.text
         assert 'class="panel audit-panel"' in index.text
-        assert "max-height: 14rem" in (
+        assert ".table-wrap { overflow: auto; max-height: 640px; border-radius: 10px; }" in (
             Path(__file__).resolve().parents[1] / "ax_model_manager/static/styles.css"
         ).read_text(encoding="utf-8")
         assert 'id="auto-log"' in index.text

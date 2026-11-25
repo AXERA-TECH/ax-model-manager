@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,145 +7,212 @@
   <script>
     try {
       const theme = localStorage.getItem('axmm.theme');
-      document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
     } catch (_) {}
   </script>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
-  <header>
-    <div>
-      <h1>AXERA Model Manager</h1>
-      <p id="subheader">Connect to a board manager</p>
-    </div>
-    <div class="header-actions">
-      <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
-      <button id="connect" class="primary">Connect</button>
-      <button id="refresh">Refresh / Scan</button>
-      <button id="settings">Settings</button>
-      <button id="theme-toggle" title="Switch light/dark theme">☀️</button>
-    </div>
-  </header>
+<header class="topnav">
+  <div class="brand">
+    <div class="brand-mark">AX</div>
+    <div class="brand-copy"><b>AXERA</b><small>Model Manager</small></div>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="主导航">
+    <a class="tab-link active" data-tab="overview" href="#overview">概览</a>
+    <a class="tab-link" data-tab="models" href="#models">模型</a>
+    <a class="tab-link" data-tab="verify" href="#verify">验证</a>
+    <a class="tab-link" data-tab="jobs" href="#jobs">任务</a>
+    <a class="tab-link" data-tab="settings" href="#settings">设置</a>
+  </nav>
+  <div class="top-right">
+    <span id="top-status" class="status-pill">未连接</span>
+    <input id="token" class="token-input" type="password" placeholder="Bearer token" autocomplete="off">
+    <button id="connect" class="btn small primary">连接</button>
+    <button id="refresh" class="icon-btn" title="刷新数据">↻</button>
+    <button id="theme-toggle" class="icon-btn" title="切换主题">☀️</button>
+    <button id="settings" class="icon-btn" title="模型管理设置">⚙</button>
+  </div>
+</header>
 
-  <main>
-    <section id="alert" class="alert hidden"></section>
+<main class="main">
+  <section id="alert" class="alert hidden"></section>
 
-    <section class="metrics">
-      <article class="metric">
-        <span>Manager</span>
-        <strong id="metric-manager">—</strong>
-      </article>
-      <article class="metric">
-        <span>Models</span>
-        <strong id="metric-models">—</strong>
-      </article>
-      <article class="metric">
-        <span>Valid</span>
-        <strong id="metric-valid">—</strong>
-      </article>
-      <article class="metric">
-        <span>Active jobs</span>
-        <strong id="metric-active">—</strong>
-      </article>
-      <article class="metric metric-editor">
-        <span>Model limit</span>
-        <div class="limit-row">
+  <section id="tab-overview" class="tab-panel active">
+    <section class="hero">
+      <div class="device-art"><div class="chip"></div></div>
+      <div class="hero-copy">
+        <div class="eyebrow">AX8860P · 本机设备</div>
+        <h1 id="device-name">AX8860P 开发板</h1>
+        <p id="device-sub">正在读取设备信息…</p>
+        <div class="hero-status">
+          <span id="device-status" class="pill">连接中</span>
+          <span id="subheader" class="muted">—</span>
+        </div>
+      </div>
+      <div class="rings">
+        <div class="ring">
+          <svg viewBox="0 0 112 112"><circle class="track" cx="56" cy="56" r="46"/><circle id="ring-cmm" class="fill" cx="56" cy="56" r="46" stroke="#0a84ff" stroke-dasharray="289" stroke-dashoffset="289"/></svg>
+          <div class="ring-num"><b id="ring-cmm-value">—</b><small id="ring-cmm-label">CMM</small></div>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 112 112"><circle class="track" cx="56" cy="56" r="46"/><circle id="ring-os" class="fill" cx="56" cy="56" r="46" stroke="#34c759" stroke-dasharray="289" stroke-dashoffset="289"/></svg>
+          <div class="ring-num"><b id="ring-os-value">—</b><small id="ring-os-label">OS</small></div>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 112 112"><circle class="track" cx="56" cy="56" r="46"/><circle id="ring-npu" class="fill" cx="56" cy="56" r="46" stroke="#ff9f0a" stroke-dasharray="289" stroke-dashoffset="289"/></svg>
+          <div class="ring-num"><b id="ring-npu-value">—</b><small id="ring-npu-label">NPU</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="kpis">
+      <article class="kpi"><span>Manager</span><strong id="metric-manager">—</strong><small>控制模式</small></article>
+      <article class="kpi"><span>模型</span><strong id="metric-models">—</strong><small>已发现</small></article>
+      <article class="kpi"><span>可用</span><strong id="metric-valid">—</strong><small>通过校验</small></article>
+      <article class="kpi"><span>运行中</span><strong id="metric-active">—</strong><small>并发任务</small></article>
+    </section>
+
+    <section class="panel quick-panel">
+      <div class="panel-head"><h2>快速验证</h2><span>启动模型后可直接试用</span></div>
+      <div class="quick-grid">
+        <button class="quick-tile" data-demo="chat"><span class="quick-icon">💬</span><b>对话</b><small>文本 / 多轮</small></button>
+        <button class="quick-tile" data-demo="vision"><span class="quick-icon">🖼</span><b>图片理解</b><small>多图输入</small></button>
+        <button class="quick-tile" data-demo="ocr"><span class="quick-icon">🔍</span><b>OCR</b><small>文档 / 表格</small></button>
+        <button class="quick-tile" data-demo="image"><span class="quick-icon">✦</span><b>生图</b><small>H3 Image</small></button>
+        <button class="quick-tile" data-demo="asr"><span class="quick-icon">🎙</span><b>ASR</b><small>语音转文字</small></button>
+        <button class="quick-tile" data-demo="tts"><span class="quick-icon">♪</span><b>TTS</b><small>文字转语音</small></button>
+      </div>
+    </section>
+
+    <section class="panel" id="active-api-panel">
+      <div class="panel-head"><h2>OpenAI 兼容 API</h2><span id="api-state" class="pill">No model running</span></div>
+      <div id="active-api" class="api-grid">
+        <p class="message">启动模型后显示 API base、模型 ID 和请求示例。</p>
+      </div>
+    </section>
+
+    <details class="advanced">
+      <summary>高级设备指标</summary>
+      <div id="device-identity" class="metadata device-summary"></div>
+      <div id="runtime-reconciliation" class="runtime-reconciliation"></div>
+      <div id="device-grid" class="device-grid">
+        <p class="message">tempmon is unavailable on this board.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="tab-models" class="tab-panel">
+    <div class="toolbar">
+      <input id="model-search" class="search" type="search" placeholder="搜索模型 / 能力">
+      <select id="capability-filter" class="select" aria-label="能力筛选">
+        <option value="">全部能力</option>
+        <option value="text">text</option>
+        <option value="image">image</option>
+        <option value="image_gen">image_gen</option>
+        <option value="audio">audio</option>
+        <option value="tts">tts</option>
+      </select>
+      <label class="checkbox"><input id="show-invalid" type="checkbox"> 显示无效</label>
+      <div class="toolbar-right">
+        <label class="inline-field">并发上限
           <select id="max-running-models" aria-label="Maximum concurrent models">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
             <option value="10">10</option>
           </select>
-          <button id="save-model-limit" class="small">Save</button>
-        </div>
-        <small class="metric-detail">Concurrent runtimes use separate ports</small>
-      </article>
-    </section>
+        </label>
+        <button id="save-model-limit" class="btn small">保存</button>
+      </div>
+    </div>
+    <div id="models" class="model-grid"></div>
+  </section>
 
-    <section class="panel device-panel">
+  <section id="tab-verify" class="tab-panel">
+    <section class="panel" id="lite-webui-panel">
       <div class="panel-head">
         <div>
-          <h2>Device Status</h2>
-          <p class="panel-subtitle">Key board resources · advanced details collapsed</p>
-        </div>
-        <span id="device-status" class="pill">Unavailable</span>
-      </div>
-      <div id="device-identity" class="metadata device-summary"></div>
-      <details id="device-details" class="device-details">
-        <summary>Show advanced device metrics</summary>
-        <div id="runtime-reconciliation" class="runtime-reconciliation"></div>
-        <div id="device-grid" class="device-grid">
-          <p class="message">tempmon is unavailable on this board.</p>
-        </div>
-      </details>
-    </section>
-
-    <section class="panel api-panel" id="active-api-panel">
-      <div class="panel-head">
-        <h2>OpenAI-compatible API</h2>
-        <span id="api-state" class="pill">No model running</span>
-      </div>
-      <div id="active-api" class="api-grid">
-        <p class="message">Start a model to see its API base URL, model ID, and request example.</p>
-      </div>
-    </section>
-
-    <section class="panel demo-panel" id="lite-webui-panel">
-      <div class="panel-head">
-        <div>
-          <h2>Lite WebUI Demo</h2>
-          <p class="panel-subtitle">Optional browser smoke test for the active runtime</p>
+          <h2>LiteWebUI 演示</h2>
+          <p class="panel-subtitle">浏览器内直接试用当前运行模型</p>
         </div>
         <div class="demo-actions">
           <span id="lite-webui-state" class="pill">No model running</span>
-          <a id="lite-webui-open" class="button-link" href="#" target="_blank" rel="noopener">Open</a>
-          <button id="lite-webui-reload" type="button" class="small">Reload</button>
+          <a id="lite-webui-open" class="button-link" href="#" target="_blank" rel="noopener">打开</a>
+          <button id="lite-webui-reload" type="button" class="btn small">刷新</button>
         </div>
       </div>
-      <p class="message demo-message">
-        Lite WebUI is a separate static frontend. Deploy it at
-        <code>http://&lt;board-ip&gt;:18100/</code>; Model Manager links and embeds it, but does
-        not bundle or proxy its application files.
-      </p>
-      <iframe id="lite-webui-frame" class="demo-frame" title="Lite WebUI model demo"></iframe>
+      <p class="message demo-message">LiteWebUI 是独立静态前端，部署在 <code>http://&lt;board-ip&gt;:18100/</code>；Manager 只负责链接和嵌入。</p>
+      <iframe id="lite-webui-frame" class="demo-frame" title="LiteWebUI model demo"></iframe>
     </section>
 
-    <section class="layout">
-      <div class="panel models-panel">
-        <div class="panel-head">
-          <h2>Models</h2>
-          <label class="checkbox">
-            <input id="show-invalid" type="checkbox">
-            Show invalid
-          </label>
-        </div>
-        <div id="models" class="cards"></div>
-      </div>
-
-      <div class="side">
-        <div class="panel">
-          <div class="panel-head"><h2>Jobs</h2></div>
-          <div id="jobs" class="jobs"></div>
-        </div>
+    <section class="panel">
+      <div class="panel-head"><h2>快速入口</h2><span>按能力跳转</span></div>
+      <div class="quick-grid">
+        <button class="quick-tile" data-demo="chat"><span class="quick-icon">💬</span><b>对话</b><small>文本 / 多轮</small></button>
+        <button class="quick-tile" data-demo="vision"><span class="quick-icon">🖼</span><b>图片理解</b><small>多图输入</small></button>
+        <button class="quick-tile" data-demo="ocr"><span class="quick-icon">🔍</span><b>OCR</b><small>文档 / 表格</small></button>
+        <button class="quick-tile" data-demo="image"><span class="quick-icon">✦</span><b>生图</b><small>H3 Image</small></button>
+        <button class="quick-tile" data-demo="asr"><span class="quick-icon">🎙</span><b>ASR</b><small>语音转文字</small></button>
+        <button class="quick-tile" data-demo="tts"><span class="quick-icon">♪</span><b>TTS</b><small>文字转语音</small></button>
       </div>
     </section>
 
-    <div class="panel audit-panel">
-      <div class="panel-head"><h2>Audit</h2></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Time</th><th>Action</th><th>Model</th><th>Job</th><th>Detail</th></tr></thead>
-          <tbody id="audit"></tbody>
-        </table>
+    <section class="panel">
+      <div class="panel-head"><h2>接口地址</h2><span>Manager / LiteWebUI / 文档</span></div>
+      <div class="api-grid">
+        <div class="api-box"><div class="api-caption">Manager API</div><div><a id="verify-manager-link" href="#" target="_blank" rel="noopener">—</a></div></div>
+        <div class="api-box"><div class="api-caption">LiteWebUI</div><div><a id="verify-litewebui-link" href="#" target="_blank" rel="noopener">—</a></div></div>
+        <div class="api-box"><div class="api-caption">OpenAPI 文档</div><div><a id="verify-docs-link" href="#" target="_blank" rel="noopener">—</a></div></div>
       </div>
+    </section>
+  </section>
+
+  <section id="tab-jobs" class="tab-panel">
+    <div class="two-col">
+      <section class="panel">
+        <div class="panel-head"><h2>任务</h2><span>最近 40 条</span></div>
+        <div id="jobs" class="jobs"></div>
+      </section>
+      <section class="panel audit-panel">
+        <div class="panel-head"><h2>审计</h2><span>操作记录</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>动作</th><th>模型</th><th>任务</th><th>详情</th></tr></thead>
+            <tbody id="audit"></tbody>
+          </table>
+        </div>
+      </section>
     </div>
-  </main>
+  </section>
+
+  <section id="tab-settings" class="tab-panel">
+    <section class="panel settings-panel">
+      <div class="panel-head"><h2>设备与 Manager</h2><button id="open-settings" class="btn small">修改配置</button></div>
+      <div class="settings-grid">
+        <div class="settings-item"><span>模型根目录</span><b id="settings-model-root">—</b></div>
+        <div class="settings-item"><span>Manager 端口</span><b id="settings-manager-port">—</b></div>
+        <div class="settings-item"><span>进程后端</span><b id="settings-backend">—</b></div>
+        <div class="settings-item"><span>设备地址</span><b id="settings-device-ip">—</b></div>
+        <div class="settings-item"><span>Agent</span><b id="settings-agent">—</b></div>
+        <div class="settings-item"><span>BSP</span><b id="settings-bsp">—</b></div>
+      </div>
+      <div class="settings-links">
+        <a id="settings-docs-link" href="#" target="_blank" rel="noopener">OpenAPI 文档</a>
+        <a id="settings-litewebui" href="#" target="_blank" rel="noopener">LiteWebUI</a>
+        <a href="https://github.com/AXERA-TECH/ax-model-manager" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </section>
+    <section class="panel settings-panel">
+      <div class="panel-head"><h2>外观与模式</h2></div>
+      <div class="settings-grid">
+        <div class="settings-item"><span>主题</span><b>浅色 / 深色（右上角切换）</b></div>
+        <div class="settings-item"><span>设备模式</span><b>单设备（本机）</b></div>
+      </div>
+    </section>
+  </section>
+</main>
 
   <dialog id="settings-dialog" class="settings-dialog">
     <div class="dialog-head">
@@ -302,6 +369,7 @@
     <div id="log-content" role="log"></div>
   </dialog>
 
-  <script src="/ui/app.js"></script>
+
+<script src="/ui/app.js"></script>
 </body>
 </html>

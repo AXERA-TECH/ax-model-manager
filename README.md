@@ -15,7 +15,7 @@ transient unit 拉起 llama-server，并提供任务状态、日志、审计和�
 也能在单板上发现、配置、启动、切换和停止模型服务
 ```
 
-![AXERA Model Manager Web Admin UI](assets/web-admin-ui.png)
+![AXERA Model Manager Web Admin UI](assets/web-admin-ui-v2.png)
 
 ---
 
@@ -109,6 +109,8 @@ http://<board-ip>:18090/
 ```
 
 ---
+
+![Model Manager · 模型管理](assets/web-admin-models-v2.png)
 
 ## 主要能力
 
