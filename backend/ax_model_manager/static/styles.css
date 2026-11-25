@@ -347,7 +347,14 @@ code, pre, .mono {
 .small.danger { color: var(--red); border-color: rgba(255, 59, 48, .25); background: var(--red-soft); }
 
 /* ---------- API boxes ---------- */
-.api-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+#active-api { display: flex; flex-direction: column; gap: 12px; }
+.api-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.runtime-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.runtime-tab { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-size: 11px; }
+.runtime-tab:hover { border-color: var(--border-strong); color: var(--text); }
+.runtime-tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.runtime-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 5px rgba(52, 199, 89, .7); }
+.runtime-tab .port { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; color: var(--faint); }
 .api-box {
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 12px; padding: 11px 13px; min-width: 0;
@@ -540,6 +547,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); backdrop-filter: blur(5px); }
 }
 @media (max-width: 1024px) {
   .hero { flex-wrap: wrap; }
+  .api-grid { grid-template-columns: 1fr; }
   .rings { margin-left: 0; }
   .two-col { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: repeat(2, 1fr); }

@@ -13,6 +13,7 @@ let launchMode = 'start';
 let launchManifest = null;
 let currentDemoUrl = '';
 let currentConfig = {};
+let selectedApiModel = null;
 const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
@@ -160,6 +161,7 @@ function apiBox(title, node, actions = []) {
   const box = document.createElement('div');
   box.className = 'api-box';
   const caption = document.createElement('span');
+  caption.className = 'api-caption';
   caption.textContent = title;
   box.append(caption, node);
   if (actions.length) {
@@ -178,63 +180,107 @@ function renderActiveApi(models) {
 
   const activeModels = models.filter(model => model.active_job?.port);
   if (!activeModels.length) {
+    selectedApiModel = null;
     statePill.className = 'pill';
     statePill.textContent = '没有运行中的模型';
     const message = document.createElement('p');
     message.className = 'message';
     message.style.margin = '0';
-    message.textContent = '启动模型后显示 OpenAI 兼容 API 的 base URL、模型 ID 和请求示例。';
+    message.textContent = '启动模型后显示 API 地址、模型 ID 和请求示例。';
     container.append(message);
     return;
   }
 
-  const firstModel = activeModels[0];
-  const firstActive = firstModel.active_job;
-  const state = firstActive.state || 'unknown';
+  if (!activeModels.some(model => model.id === selectedApiModel)) {
+    selectedApiModel = activeModels[0].id;
+  }
+  const selected = activeModels.find(model => model.id === selectedApiModel) || activeModels[0];
+  const active = selected.active_job;
+  const state = active.state || 'unknown';
+
   statePill.className = `pill ${stateClass(state)}`;
   statePill.textContent = activeModels.length === 1
-    ? `${firstModel.name} · ${stateLabel(state)}`
-    : `${activeModels.length} 个运行时 · 首个 ${firstModel.name}`;
+    ? `${selected.name} · ${stateLabel(state)}`
+    : `${activeModels.length} 个运行时`;
 
-  for (const activeModel of activeModels) {
-    const active = activeModel.active_job;
-    const base = `${publicRuntimeOrigin(active.port)}/v1`;
-    const chatUrl = `${base}/chat/completions`;
-    const modelId = active.runtime_models?.[0] || activeModel.id;
-    const curl = [
-      `curl ${chatUrl} \\`,
-      `  -H 'Content-Type: application/json' \\`,
-      `  --data-binary '{"model":"${modelId}","messages":[{"role":"user","content":"Hello"}]}'`,
-    ].join('\n');
-
-    const baseUrlNode = document.createElement('div');
-    const baseLink = document.createElement('a');
-    baseLink.href = base;
-    baseLink.target = '_blank';
-    baseLink.rel = 'noopener';
-    baseLink.textContent = base;
-    baseUrlNode.append(baseLink);
-
-    const modelNode = document.createElement('code');
-    modelNode.textContent = modelId;
-    modelNode.title = active.runtime_models?.length
-      ? active.runtime_models.join('\n')
-      : '运行时就绪后会刷新实际模型 ID';
-
-    const requestNode = document.createElement('pre');
-    requestNode.textContent = curl;
-
-    container.append(
-      apiBox(`OpenAI Base URL · ${activeModel.name}`, baseUrlNode, [
-        copyButton(base, '复制 Base URL'),
-        copyButton(chatUrl, '复制 Chat URL'),
-      ]),
-      apiBox(`模型 ID · ${activeModel.name}`, modelNode, [copyButton(modelId, '复制模型 ID')]),
-      apiBox(`Chat 请求示例 · ${activeModel.name}`, requestNode, [copyButton(curl, '复制 curl')]),
-    );
+  const tabs = document.createElement('div');
+  tabs.className = 'runtime-tabs';
+  if (activeModels.length > 1) {
+    for (const model of activeModels) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = `runtime-tab${model.id === selected.id ? ' active' : ''}`;
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      const label = document.createElement('span');
+      label.textContent = model.name;
+      const port = document.createElement('span');
+      port.className = 'port';
+      port.textContent = `:${model.active_job.port}`;
+      tab.append(dot, label, port);
+      tab.onclick = () => {
+        selectedApiModel = model.id;
+        renderActiveApi(modelRows);
+      };
+      tabs.append(tab);
+    }
   }
-}
 
+  const base = `${publicRuntimeOrigin(active.port)}/v1`;
+  const modelId = active.runtime_models?.[0] || selected.id;
+  const isImageGen = (selected.capabilities || []).includes('image_gen');
+
+  const baseUrlNode = document.createElement('div');
+  const baseLink = document.createElement('a');
+  baseLink.href = base;
+  baseLink.target = '_blank';
+  baseLink.rel = 'noopener';
+  baseLink.textContent = base;
+  baseUrlNode.append(baseLink);
+
+  const modelNode = document.createElement('code');
+  modelNode.textContent = modelId;
+  modelNode.title = active.runtime_models?.length
+    ? active.runtime_models.join('\n')
+    : '运行时就绪后会刷新实际模型 ID';
+
+  const curl = isImageGen
+    ? [
+        `curl ${base}/images/generations \\`,
+        `  -H 'Content-Type: application/json' \\`,
+        `  --data-binary '{"model":"${modelId}","prompt":"a lighthouse","size":"1024x1024","response_format":"url"}'`,
+      ].join('\n')
+    : [
+        `curl ${base}/chat/completions \\`,
+        `  -H 'Content-Type: application/json' \\`,
+        `  --data-binary '{"model":"${modelId}","messages":[{"role":"user","content":"Hello"}]}'`,
+      ].join('\n');
+  const requestNode = document.createElement('pre');
+  requestNode.textContent = curl;
+
+  const actions = [
+    copyButton(base, '复制 Base URL'),
+    isImageGen ? copyButton(base, '复制 API 地址') : copyButton(`${base}/chat/completions`, '复制 Chat URL'),
+  ];
+  if (isImageGen) {
+    const web = document.createElement('a');
+    web.className = 'button-link';
+    web.href = `${publicRuntimeOrigin(active.port)}/`;
+    web.target = '_blank';
+    web.rel = 'noopener';
+    web.textContent = '打开生图网页';
+    actions.push(web);
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'api-grid';
+  grid.append(
+    apiBox(`Base URL · ${selected.name}`, baseUrlNode, actions),
+    apiBox(`模型 ID · ${selected.name}`, modelNode, [copyButton(modelId, '复制模型 ID')]),
+    apiBox(isImageGen ? `生图请求 · ${selected.name}` : `Chat 请求 · ${selected.name}`, requestNode, [copyButton(curl, '复制 curl')]),
+  );
+  container.append(tabs, grid);
+}
 function renderLiteWebUi(models) {
   const frame = $('lite-webui-frame');
   const statePill = $('lite-webui-state');
