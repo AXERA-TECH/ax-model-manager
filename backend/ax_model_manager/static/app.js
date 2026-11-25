@@ -69,17 +69,31 @@ function closeConfirm(value) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers: {
+        ...authHeaders(),
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('无法连接到 Manager 服务，请确认服务已启动或稍后重试');
+    }
+    throw error;
+  }
   let payload = {};
   try { payload = await response.json(); } catch (_) {}
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('访问令牌无效或未登录，请重新输入 Bearer token');
+    }
+    if (response.status === 403) {
+      throw new Error('没有权限执行该操作，请确认 Manager 已启用控制模式');
+    }
     const detail = payload?.detail;
     const message = typeof detail === 'string' ? detail : JSON.stringify(detail ?? payload);
     throw new Error(message || `HTTP ${response.status}`);
@@ -870,6 +884,11 @@ async function refresh() {
     renderJobs(jobs.jobs);
     renderAudit(audit.records);
   } catch (error) {
+    const topStatus = $('top-status');
+    if (topStatus) {
+      topStatus.className = 'status-pill offline';
+      topStatus.textContent = '连接中断';
+    }
     showAlert(error.message);
   }
 }
