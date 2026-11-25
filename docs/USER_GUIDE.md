@@ -459,6 +459,8 @@ curl -X POST "$MANAGER/api/v1/models/scan" \
 
 `POST /api/v1/models/scan` 返回发现的模型数量、可启动数量和扫描错误。
 
+模型目录扫描有 **10 秒缓存**：自动轮询复用缓存，`POST /api/v1/models/scan`（或 UI 的「刷新」按钮）会强制重扫。配置变更、Profile 保存 / 重置 / 删除、manifest 确认会使缓存失效。
+
 注意：修改 `model_root` 不会移动已有模型；旧路径下的模型会从列表中消失。
 
 ## API 调用方式

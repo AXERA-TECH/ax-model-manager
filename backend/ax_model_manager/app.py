@@ -262,10 +262,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def config() -> dict[str, Any]:
         return app.state.settings.public_dict()
 
+    # Scanning every model package (including the 32 GB H3 directory) costs
+    # hundreds of milliseconds. Package metadata changes rarely, so cache the
+    # scan briefly for the polling UI; explicit scans and mutations invalidate.
+    scan_cache: dict[str, Any] = {"key": None, "expires_at": 0.0, "records": []}
+    SCAN_CACHE_TTL = 10.0
+
+    def invalidate_scan_cache() -> None:
+        scan_cache["expires_at"] = 0.0
+
+    def cached_scan_models(
+        model_root: Path,
+        overrides_dir: Path | None = None,
+        *,
+        force: bool = False,
+    ) -> list[dict[str, Any]]:
+        key = (str(model_root), str(overrides_dir) if overrides_dir is not None else None)
+        now = time.monotonic()
+        if not force and scan_cache["key"] == key and now < scan_cache["expires_at"]:
+            return [dict(item) for item in scan_cache["records"]]
+        records = scan_models(model_root, overrides_dir)
+        scan_cache.update(key=key, expires_at=now + SCAN_CACHE_TTL, records=records)
+        return [dict(item) for item in records]
+
     @app.get("/api/v1/models", dependencies=[Depends(require_auth)])
     async def models() -> dict[str, Any]:
         try:
-            records = scan_models(
+            records = cached_scan_models(
                 Path(app.state.settings.model_root),
                 Path(app.state.settings.data_dir) / "models",
             )
@@ -297,9 +320,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Rescan the configured model root without changing it."""
 
         try:
-            records = scan_models(
+            records = cached_scan_models(
                 Path(request.app.state.settings.model_root),
                 Path(request.app.state.settings.data_dir) / "models",
+                force=True,
             )
         except ModelRootError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -321,7 +345,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def find_model(model_id: str) -> dict[str, Any]:
         try:
-            records = scan_models(
+            records = cached_scan_models(
                 Path(app.state.settings.model_root),
                 Path(app.state.settings.data_dir) / "models",
             )
@@ -398,7 +422,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         if not errors and model_root is not None:
             try:
-                records = scan_models(model_root, data_dir / "models")
+                records = cached_scan_models(model_root, data_dir / "models")
                 payload.update({
                     "model_count": len(records),
                     "valid_count": sum(1 for item in records if item["valid"]),
@@ -485,6 +509,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=503, detail=f"cannot save config: {exc}") from exc
 
+        invalidate_scan_cache()
         replacements: dict[str, Any] = {}
         if new_model_root is not None:
             replacements["model_root"] = new_model_root
@@ -524,6 +549,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             json.dumps(record["manifest"], ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        invalidate_scan_cache()
         audit(request, "manifest_confirmed", model=model_id, path=str(override_path))
         updated = find_model(model_id)
         return {
@@ -549,6 +575,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             json.dumps(result.manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        invalidate_scan_cache()
         updated = find_model(str(record["id"]))
         audit(request, action, model=record["id"], profile_path=str(override_path))
         return {
@@ -561,7 +588,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def find_base_model(model_id: str) -> dict[str, Any]:
         try:
-            records = scan_models(Path(app.state.settings.model_root), None)
+            records = cached_scan_models(Path(app.state.settings.model_root), None)
         except ModelRootError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         for record in records:
@@ -1383,7 +1410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not orphan:
             raise HTTPException(status_code=404, detail=f"orphan runtime not found: {runtime_id}")
         command = orphan.get("command") or ""
-        records = scan_models(
+        records = cached_scan_models(
             Path(request.app.state.settings.model_root),
             Path(request.app.state.settings.data_dir) / "models",
         )
@@ -1515,7 +1542,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/dashboard", dependencies=[Depends(require_auth)])
     async def dashboard(request: Request) -> dict[str, Any]:
         try:
-            records = scan_models(
+            records = cached_scan_models(
                 Path(request.app.state.settings.model_root),
                 Path(request.app.state.settings.data_dir) / "models",
             )

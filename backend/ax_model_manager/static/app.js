@@ -1527,7 +1527,12 @@ $('connect').onclick = () => {
   refresh();
   scheduleRefresh();
 };
-$('refresh').onclick = refresh;
+$('refresh').onclick = async () => {
+  try {
+    await api('/api/v1/models/scan', { method: 'POST' });
+  } catch (_) {}
+  refresh();
+};
 $('settings').onclick = openSettings;
 $('settings-close').onclick = () => $('settings-dialog').close();
 $('validate-model-root').onclick = validateModelRoot;
