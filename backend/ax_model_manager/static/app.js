@@ -22,7 +22,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = selected;
   localStorage.setItem('axmm.theme', selected);
   $('theme-toggle').textContent = selected === 'light' ? '🌙' : '☀️';
-  $('theme-toggle').title = selected === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+  $('theme-toggle').title = selected === 'light' ? '切换到深色主题' : '切换到浅色主题';
 }
 
 function authHeaders() {
@@ -66,6 +66,20 @@ function stateClass(state) {
   return '';
 }
 
+function stateLabel(state) {
+  const labels = {
+    running: '运行中', ready: '就绪', stopped: '已停止', stopping: '停止中',
+    starting: '启动中', loading: '加载中', failed: '失败', invalid: '无效',
+    discovered: '已发现', queued: '排队中', succeeded: '成功', cancelled: '已取消',
+  };
+  return labels[state] || state || '—';
+}
+
+function actionLabel(action) {
+  const labels = { start: '启动', stop: '停止', restart: '重启', switch: '切换' };
+  return labels[action] || action || '—';
+}
+
 function formatSize(bytes) {
   if (!Number.isFinite(bytes)) return '—';
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -87,7 +101,7 @@ function formatNumber(value, digits = 1) {
 
 function formatTime(value) {
   if (!value) return '—';
-  return new Date(value * 1000).toLocaleString();
+  return new Date(value * 1000).toLocaleString('zh-CN', { hour12: false });
 }
 
 function errorText(detail) {
@@ -117,7 +131,7 @@ async function copyText(text, button) {
   try {
     await navigator.clipboard.writeText(text);
     const original = button.textContent;
-    button.textContent = 'Copied';
+    button.textContent = '已复制';
     setTimeout(() => { button.textContent = original; }, 1200);
   } catch (_) {
     const area = document.createElement('textarea');
@@ -129,7 +143,7 @@ async function copyText(text, button) {
     document.execCommand('copy');
     area.remove();
     const original = button.textContent;
-    button.textContent = 'Copied';
+    button.textContent = '已复制';
     setTimeout(() => { button.textContent = original; }, 1200);
   }
 }
@@ -165,11 +179,11 @@ function renderActiveApi(models) {
   const activeModels = models.filter(model => model.active_job?.port);
   if (!activeModels.length) {
     statePill.className = 'pill';
-    statePill.textContent = 'No model running';
+    statePill.textContent = '没有运行中的模型';
     const message = document.createElement('p');
     message.className = 'message';
     message.style.margin = '0';
-    message.textContent = 'Start a model to see its OpenAI-compatible API base URL, model ID, and request example.';
+    message.textContent = '启动模型后显示 OpenAI 兼容 API 的 base URL、模型 ID 和请求示例。';
     container.append(message);
     return;
   }
@@ -179,8 +193,8 @@ function renderActiveApi(models) {
   const state = firstActive.state || 'unknown';
   statePill.className = `pill ${stateClass(state)}`;
   statePill.textContent = activeModels.length === 1
-    ? `${firstModel.name} · ${state}`
-    : `${activeModels.length} runtimes · first ${firstModel.name}`;
+    ? `${firstModel.name} · ${stateLabel(state)}`
+    : `${activeModels.length} 个运行时 · 首个 ${firstModel.name}`;
 
   for (const activeModel of activeModels) {
     const active = activeModel.active_job;
@@ -205,18 +219,18 @@ function renderActiveApi(models) {
     modelNode.textContent = modelId;
     modelNode.title = active.runtime_models?.length
       ? active.runtime_models.join('\n')
-      : 'Advertised model ID will be refreshed after the runtime becomes ready';
+      : '运行时就绪后会刷新实际模型 ID';
 
     const requestNode = document.createElement('pre');
     requestNode.textContent = curl;
 
     container.append(
-      apiBox(`OpenAI base URL · ${activeModel.name}`, baseUrlNode, [
-        copyButton(base, 'Copy base URL'),
-        copyButton(chatUrl, 'Copy chat URL'),
+      apiBox(`OpenAI Base URL · ${activeModel.name}`, baseUrlNode, [
+        copyButton(base, '复制 Base URL'),
+        copyButton(chatUrl, '复制 Chat URL'),
       ]),
-      apiBox(`Model ID · ${activeModel.name}`, modelNode, [copyButton(modelId, 'Copy model ID')]),
-      apiBox(`Chat request · ${activeModel.name}`, requestNode, [copyButton(curl, 'Copy curl')]),
+      apiBox(`模型 ID · ${activeModel.name}`, modelNode, [copyButton(modelId, '复制模型 ID')]),
+      apiBox(`Chat 请求示例 · ${activeModel.name}`, requestNode, [copyButton(curl, '复制 curl')]),
     );
   }
 }
@@ -236,7 +250,7 @@ function renderLiteWebUi(models) {
     openLink.classList.add('hidden');
     reloadButton.disabled = true;
     statePill.className = 'pill';
-    statePill.textContent = 'No model running';
+    statePill.textContent = '没有运行中的模型';
     return;
   }
 
@@ -245,8 +259,8 @@ function renderLiteWebUi(models) {
   const state = active.state || 'unknown';
   statePill.className = `pill ${stateClass(state)}`;
   statePill.textContent = activeModels.length === 1
-    ? `${activeModel.name} · ${state}`
-    : `${activeModels.length} runtimes · first ${activeModel.name}`;
+    ? `${activeModel.name} · ${stateLabel(state)}`
+    : `${activeModels.length} 个运行时 · 首个 ${activeModel.name}`;
 
   openLink.classList.remove('hidden');
   openLink.href = desiredUrl;
@@ -326,11 +340,11 @@ function renderDeviceResources(resources = {}) {
     setRing('cmm', 0, '—', 'CMM');
     setRing('os', 0, '—', 'OS');
     setRing('npu', 0, '—', 'NPU');
-    identity.append(summaryPill('Device metrics unavailable'));
+    identity.append(summaryPill('设备指标不可用'));
     const message = document.createElement('p');
     message.className = 'message';
     message.style.margin = '0';
-    message.textContent = 'Check tempmon on port 8080.';
+    message.textContent = '请检查板子 8080 端口上的 tempmon。';
     grid.append(message);
     return;
   }
@@ -361,11 +375,11 @@ function renderDeviceResources(resources = {}) {
   identity.append(
     summaryPill(
       cmm.total_kb ? `CMM ${formatKb(cmm.used_kb)} / ${formatKb(cmm.total_kb)}` : 'CMM —',
-      cmm.total_kb ? `free ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
+      cmm.total_kb ? `可用 ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
     ),
     summaryPill(
       memory.total_kb ? `OS ${formatKb(usedMemory)} / ${formatKb(memory.total_kb)}` : 'OS —',
-      memory.avail_kb ? `available ${formatKb(memory.avail_kb)}` : '',
+      memory.avail_kb ? `可用 ${formatKb(memory.avail_kb)}` : '',
     ),
     summaryPill(
       Number.isFinite(maxTemp) ? `NPU ${formatNumber(maxTemp)}°C` : 'NPU —',
@@ -374,21 +388,21 @@ function renderDeviceResources(resources = {}) {
         .join('\n'),
     ),
     summaryPill(
-      `CPU ${formatNumber(cpu.percent)}% / load ${formatNumber(load['1'])}`,
-      `load 5m ${formatNumber(load['5'])} · 15m ${formatNumber(load['15'])}`,
+      `CPU ${formatNumber(cpu.percent)}% / 负载 ${formatNumber(load['1'])}`,
+      `5 分钟负载 ${formatNumber(load['5'])} · 15 分钟负载 ${formatNumber(load['15'])}`,
     ),
     summaryPill(
       net.rx_mbps == null && net.tx_mbps == null ? 'NET —' : `NET ↓${formatNumber(net.rx_mbps)}/↑${formatNumber(net.tx_mbps)}`,
       [
-        net.rx_bytes != null ? `RX total ${formatSize(Number(net.rx_bytes) * 1024)}` : '',
-        net.tx_bytes != null ? `TX total ${formatSize(Number(net.tx_bytes) * 1024)}` : '',
+        net.rx_bytes != null ? `接收总量 ${formatSize(Number(net.rx_bytes) * 1024)}` : '',
+        net.tx_bytes != null ? `发送总量 ${formatSize(Number(net.tx_bytes) * 1024)}` : '',
       ].filter(Boolean).join('\n'),
     ),
     summaryPill(
       `LLAMA ${llama.process_count ?? 0}`,
       [
         llama.rss_kb != null ? `RSS ${formatKb(llama.rss_kb)}` : '',
-        llama.listening_ports?.length ? `ports ${llama.listening_ports.join(', ')}` : '',
+        llama.listening_ports?.length ? `端口 ${llama.listening_ports.join(', ')}` : '',
         ...(llama.processes || []).map(process => `PID ${process.pid} · RSS ${formatKb(process.rss_kb)}`),
       ].filter(Boolean).join('\n'),
     ),
@@ -397,36 +411,36 @@ function renderDeviceResources(resources = {}) {
   const temperatureClass = maxTemp >= 70 ? ' hot' : maxTemp >= 55 ? ' warn' : '';
   grid.append(
     deviceCard(
-      'Board identity',
+      '设备标识',
       agent.chip_type || '—',
       [
-        agent.version ? `agent ${agent.version}` : '',
+        agent.version ? `Agent ${agent.version}` : '',
         agent.bsp_version || '',
-        resources.sampled_at ? `sample ${new Date(resources.sampled_at * 1000).toLocaleTimeString()}` : '',
+        resources.sampled_at ? `采样 ${new Date(resources.sampled_at * 1000).toLocaleTimeString()}` : '',
       ],
     ),
     deviceCard(
       'CPU',
-      `${cpu.cores || 0} cores`,
+      `${cpu.cores || 0} 核`,
       [
-        `load ${formatNumber(load['1'])} / ${formatNumber(load['5'])} / ${formatNumber(load['15'])}`,
+        `负载 ${formatNumber(load['1'])} / ${formatNumber(load['5'])} / ${formatNumber(load['15'])}`,
         cpu.frequency_min_mhz === cpu.frequency_max_mhz
           ? `${formatNumber(cpu.frequency_min_mhz / 1000, 2)} GHz`
           : `${formatNumber(cpu.frequency_min_mhz / 1000, 2)}–${formatNumber(cpu.frequency_max_mhz / 1000, 2)} GHz`,
       ],
     ),
     deviceCard(
-      'NPU thermal zones',
+      'NPU 温度区域',
       Number.isFinite(maxTemp) ? `${formatNumber(maxTemp)} °C` : '—',
       [Number.isFinite(maxTemp) ? (maxTemp >= 70 ? 'high' : maxTemp >= 55 ? 'warm' : 'normal') : ''],
       (resources.thermal_zones || []).map(zone => [
-        `${zone.type || zone.name || 'zone'} ${formatNumber(zone.c)}°C`,
+        `${zone.type || zone.name || '区域'} ${formatNumber(zone.c)}°C`,
         `${zone.name || ''} ${zone.type || ''}`.trim(),
       ]),
       temperatureClass,
     ),
     deviceCard(
-      'NPU clocks',
+      'NPU 时钟',
       npu.tdp_freq_mhz ? `${npu.tdp_freq_mhz} MHz TDP` : '—',
       [],
       (npu.clock_mhz || []).map(value => [`${formatNumber(value, 0)} MHz`]),
@@ -439,7 +453,7 @@ function renderDeviceResources(resources = {}) {
   diskTitle.textContent = 'Disks';
   const diskValue = document.createElement('div');
   diskValue.className = 'device-value';
-  diskValue.textContent = `${resources.disks?.length || 0} filesystems`;
+  diskValue.textContent = `${resources.disks?.length || 0} 个文件系统`;
   const bars = document.createElement('div');
   bars.className = 'device-bars';
   for (const disk of resources.disks || []) {
@@ -450,7 +464,7 @@ function renderDeviceResources(resources = {}) {
     name.textContent = disk.mount || disk.fs || 'disk';
     const usage = document.createElement('b');
     const percent = disk.total_kb ? Number(disk.used_kb || 0) / Number(disk.total_kb) * 100 : 0;
-    usage.textContent = `${percent.toFixed(1)}% · free ${formatKb(disk.avail_kb)}`;
+    usage.textContent = `${percent.toFixed(1)}% · 可用 ${formatKb(disk.avail_kb)}`;
     label.append(name, usage);
     const bar = document.createElement('div');
     bar.className = 'bar';
@@ -465,7 +479,7 @@ function renderDeviceResources(resources = {}) {
   if (!resources.disks?.length) {
     const empty = document.createElement('div');
     empty.className = 'device-detail';
-    empty.textContent = 'No filesystem data reported';
+    empty.textContent = '未上报文件系统数据';
     diskCard.append(empty);
   }
   grid.append(diskCard);
@@ -480,7 +494,7 @@ function renderRuntimeReconciliation(reconciliation = {}) {
     const message = document.createElement('p');
     message.className = 'message';
     message.style.margin = '0';
-    message.textContent = `Runtime state consistent · ${reconciliation.active_runtime_count ?? 0} active runtime(s) · no orphan units`;
+    message.textContent = `运行时状态一致 · ${reconciliation.active_runtime_count ?? 0} 个活动运行时 · 无孤儿单元`;
     container.append(message);
     return;
   }
@@ -493,11 +507,11 @@ function renderRuntimeReconciliation(reconciliation = {}) {
     actions.className = 'runtime-orphan-actions';
     const adopt = document.createElement('button');
     adopt.className = 'small';
-    adopt.textContent = 'Adopt';
+    adopt.textContent = '接管';
     adopt.onclick = () => control(`/api/v1/runtimes/${orphan.runtime_id}/adopt`, {});
     const stop = document.createElement('button');
     stop.className = 'small danger';
-    stop.textContent = 'Stop';
+    stop.textContent = '停止';
     stop.onclick = () => control(`/api/v1/runtimes/${orphan.runtime_id}/stop`, {});
     actions.append(adopt, stop);
     row.append(info, actions);
@@ -542,7 +556,7 @@ function renderModels(models, config = {}) {
     name.title = model.name;
     const statePill = document.createElement('span');
     statePill.className = `pill ${stateClass(state)}`;
-    statePill.textContent = state;
+    statePill.textContent = stateLabel(state);
     const icon = document.createElement('div');
     const iconInfo = modelIcon(model);
     icon.className = `model-icon ${iconInfo.cls}`;
@@ -560,7 +574,7 @@ function renderModels(models, config = {}) {
       formatSize(model.size_bytes),
       ...(model.capabilities || []),
       model.api_type || '',
-      model.runtime_type === 'task' ? 'one-shot task' : '',
+      model.runtime_type === 'task' ? '一次性任务' : '',
       ...(model.profiles || []),
       active?.port ? `:${active.port}` : '',
     ].filter(Boolean)) {
@@ -576,7 +590,7 @@ function renderModels(models, config = {}) {
       message.textContent = model.errors.slice(0, 2).join(' · ');
     } else {
       message.className = 'message';
-      message.textContent = model.warnings?.length ? model.warnings.join(' · ') : 'Artifacts validated';
+      message.textContent = model.warnings?.length ? model.warnings.join(' · ') : '文件校验通过';
     }
 
     const actions = document.createElement('div');
@@ -590,7 +604,7 @@ function renderModels(models, config = {}) {
       if (model.manifest_source === 'draft' && model.valid) {
         const confirm = document.createElement('button');
         confirm.className = 'small primary';
-        confirm.textContent = 'Confirm manifest';
+        confirm.textContent = '确认 manifest';
         confirm.onclick = () => control(`/api/v1/models/${model.id}/manifest/confirm`, {});
         actions.append(confirm);
       }
@@ -598,8 +612,8 @@ function renderModels(models, config = {}) {
         const start = document.createElement('button');
         start.className = 'small primary';
         start.textContent = isImageGen
-          ? (activeCount >= modelLimit ? 'Force start' : 'Start')
-          : (activeCount >= modelLimit ? 'Force start…' : 'Start…');
+          ? (activeCount >= modelLimit ? '强制启动' : '启动')
+          : (activeCount >= modelLimit ? '强制启动…' : '启动…');
         start.onclick = () => (isImageGen
           ? startImageGen(model)
           : openLaunchDialog(model, 'start'));
@@ -609,14 +623,14 @@ function renderModels(models, config = {}) {
         const options = document.createElement('button');
         options.className = 'small';
         options.textContent = 'Options…';
-        options.title = 'Edit this model profile and launch options';
+        options.title = '编辑该模型的 Profile 和启动参数';
         options.onclick = () => openLaunchDialog(model, active ? 'restart' : 'start');
         actions.append(options);
       }
       if (!active && anyActive && model.ready_to_start && !isTask) {
         const switchButton = document.createElement('button');
         switchButton.className = 'small';
-        switchButton.textContent = isImageGen ? 'Switch to' : 'Switch to…';
+        switchButton.textContent = isImageGen ? '切换到' : '切换到…';
         switchButton.onclick = () => (isImageGen
           ? startImageGen(model, 'switch')
           : openLaunchDialog(model, 'switch'));
@@ -625,7 +639,7 @@ function renderModels(models, config = {}) {
       if (active) {
         const stop = document.createElement('button');
         stop.className = 'small danger';
-        stop.textContent = 'Stop';
+        stop.textContent = '停止';
         stop.onclick = () => stopModel(model.id);
         actions.append(stop);
         const restart = document.createElement('button');
@@ -638,8 +652,8 @@ function renderModels(models, config = {}) {
         if (isImageGen && active.port) {
           const open = document.createElement('button');
           open.className = 'small';
-          open.textContent = 'Open web UI';
-          open.title = `Open the image generation web page on port ${active.port}`;
+          open.textContent = '打开网页';
+          open.title = `打开 ${active.port} 端口的生图网页`;
           open.onclick = () => window.open(`http://${window.location.hostname}:${active.port}/`, '_blank');
           actions.append(open);
         }
@@ -652,7 +666,7 @@ function renderModels(models, config = {}) {
   if (!container.children.length) {
     const empty = document.createElement('div');
     empty.className = 'message';
-    empty.textContent = 'No models';
+    empty.textContent = '没有模型';
     container.append(empty);
   }
 }
@@ -666,19 +680,19 @@ function renderJobs(jobs) {
     const head = document.createElement('div');
     head.className = 'job-row';
     const title = document.createElement('strong');
-    title.textContent = `${job.model} · ${job.action}`;
+    title.textContent = `${job.model} · ${actionLabel(job.action)}`;
     const state = document.createElement('span');
     state.className = `pill ${stateClass(job.state)}`;
-    state.textContent = job.state;
+    state.textContent = stateLabel(job.state);
     head.append(title, state);
     const detail = document.createElement('div');
     detail.className = 'job-detail';
-    detail.textContent = `${job.job_id} · ${formatTime(job.created_at)} · ${job.port ? `port ${job.port}` : 'no port'}${job.error ? ` · ${job.error}` : ''}`;
+    detail.textContent = `${job.job_id} · ${formatTime(job.created_at)} · ${job.port ? `端口 ${job.port}` : '无端口'}${job.error ? ` · ${job.error}` : ''}`;
     const actions = document.createElement('div');
     actions.className = 'model-actions';
     const log = document.createElement('button');
     log.className = 'small';
-    log.textContent = 'Log';
+    log.textContent = '日志';
     log.onclick = () => openLog(job.job_id);
     actions.append(log);
     row.append(head, detail, actions);
@@ -687,7 +701,7 @@ function renderJobs(jobs) {
   if (!container.children.length) {
     const empty = document.createElement('div');
     empty.className = 'message';
-    empty.textContent = 'No jobs';
+    empty.textContent = '没有任务';
     container.append(empty);
   }
 }
@@ -793,31 +807,31 @@ async function openModelDialog(model) {
     const runtimePort = detail.active_job?.port;
     const apiBase = runtimePort ? `http://${window.location.hostname}:${runtimePort}` : null;
     for (const [label, value] of [
-      ['State', detail.active_job?.state || (detail.ready_to_start ? 'ready' : detail.valid ? 'stopped' : 'invalid')],
-      ['Runtime', detail.runtime_type === 'task' ? 'one-shot task' : 'long-running service'],
+      ['状态', stateLabel(detail.active_job?.state || (detail.ready_to_start ? 'ready' : detail.valid ? 'stopped' : 'invalid'))],
+      ['运行类型', detail.runtime_type === 'task' ? '一次性任务' : '长驻服务'],
       ['Manifest', detail.manifest_source],
-      ['Valid', detail.valid ? 'yes' : 'no'],
-      ['Size', formatSize(detail.size_bytes)],
-      ['Files', detail.file_count ?? '—'],
+      ['有效', detail.valid ? '是' : '否'],
+      ['大小', formatSize(detail.size_bytes)],
+      ['文件', detail.file_count ?? '—'],
       ...(isImageGen ? [
-        ['Engine', detail.manifest?.engine || '—'],
+        ['引擎', detail.manifest?.engine || '—'],
         ['API', detail.manifest?.api?.type || '—'],
-        ['Endpoints', (detail.manifest?.api?.endpoints || []).join('  ') || '—'],
-        ['API base', apiBase || '—'],
-        ['Web UI', apiBase ? `${apiBase}${detail.manifest?.api?.web_ui || '/'}` : '—'],
+        ['接口', (detail.manifest?.api?.endpoints || []).join('  ') || '—'],
+        ['API 地址', apiBase || '—'],
+        ['网页', apiBase ? `${apiBase}${detail.manifest?.api?.web_ui || '/'}` : '—'],
       ] : [
-        ['Context', detail.max_context?.toLocaleString() || '—'],
-        ['Default output', detail.defaults?.max_output_tokens?.toLocaleString() || '—'],
-        ['KV cache', detail.defaults?.kv_cache_quantization || '—'],
-        ['Attention', detail.defaults?.attention_quantization || '—'],
-        ['Speculative', detail.defaults?.speculative?.enabled === undefined
+        ['上下文', detail.max_context?.toLocaleString() || '—'],
+        ['默认输出', detail.defaults?.max_output_tokens?.toLocaleString() || '—'],
+        ['KV 缓存', detail.defaults?.kv_cache_quantization || '—'],
+        ['注意力', detail.defaults?.attention_quantization || '—'],
+        ['投机解码', detail.defaults?.speculative?.enabled === undefined
           ? '—'
           : detail.defaults.speculative.enabled
-            ? detail.defaults.speculative.type || 'enabled'
-            : 'off'],
+            ? detail.defaults.speculative.type || '启用'
+            : '关闭'],
       ]),
-      ['Capabilities', (detail.capabilities || []).join(', ') || '—'],
-      ['Profiles', (detail.profiles || []).join(', ') || '—'],
+      ['能力', (detail.capabilities || []).join(', ') || '—'],
+      ['Profile', (detail.profiles || []).join(', ') || '—'],
     ]) {
       summary.append(detailRow(label, String(value)));
     }
@@ -826,8 +840,8 @@ async function openModelDialog(model) {
     artifacts.replaceChildren();
     for (const artifact of detail.artifacts || []) {
       const state = artifact.exists
-        ? `${artifact.path}${artifact.executable ? ' · executable' : ''}`
-        : (artifact.errors?.join('; ') || 'missing');
+        ? `${artifact.path}${artifact.executable ? ' · 可执行' : ''}`
+        : (artifact.errors?.join('; ') || '缺失');
       artifacts.append(detailRow(artifact.key, state));
     }
 
@@ -835,11 +849,11 @@ async function openModelDialog(model) {
     jobs.replaceChildren();
     for (const job of detail.recent_jobs || []) {
       jobs.append(detailRow(
-        `${job.action} · ${job.state}`,
+        `${actionLabel(job.action)} · ${stateLabel(job.state)}`,
         `${job.job_id} · ${formatTime(job.created_at)}${job.failure_code ? ` · ${job.failure_code}` : job.error ? ` · ${job.error}` : ''}`,
       ));
     }
-    if (!(detail.recent_jobs || []).length) jobs.append(detailRow('Recent jobs', 'none'));
+    if (!(detail.recent_jobs || []).length) jobs.append(detailRow('最近任务', '无'));
     $('model-detail-manifest').textContent = JSON.stringify(detail.manifest, null, 2);
     $('model-dialog').showModal();
   } catch (error) {
@@ -851,7 +865,7 @@ async function saveModelLimit() {
   const value = Number($('max-running-models').value);
   if (!Number.isFinite(value) || value < 1) return;
   if (value > 1 && !confirm(
-    `Allow up to ${value} concurrent model runtimes?\n\nConfirm OS and CMM memory are sufficient. Each runtime uses a separate port.`
+    `允许最多 ${value} 个模型运行时并发？\n\n请确认 OS 和 CMM 内存充足。每个运行时使用独立端口。`
   )) return;
   try {
     await api('/api/v1/config', {
@@ -887,17 +901,17 @@ function renderSettingsResult(result) {
   const failed = result?.valid === false;
   output.className = `settings-result ${failed ? 'error' : 'ok'}`;
   if (failed) {
-    output.textContent = `Cannot use this model root.\n${errorText || 'validation failed'}`;
+    output.textContent = `模型根目录不可用。\n${errorText || '校验失败'}`;
     return;
   }
   const count = result?.count ?? result?.model_count ?? '—';
   const valid = result?.valid_count ?? '—';
   const ready = result?.ready_to_start_count ?? '—';
   output.textContent = [
-    `Model root: ${result?.model_root || $('model-root-input').value}`,
-    `Models found: ${count}`,
-    `Valid: ${valid}`,
-    `Ready to start: ${ready}`,
+    `模型根目录：${result?.model_root || $('model-root-input').value}`,
+    `发现模型：${count}`,
+    `有效：${valid}`,
+    `可启动：${ready}`,
   ].join('\n') + (errorText ? `\n\nModel issues:\n${errorText}` : '');
 }
 
@@ -935,7 +949,7 @@ async function saveModelRoot() {
 
 async function control(path, body) {
   try {
-    if (body && !confirm('Confirm this model control action?')) return;
+    if (body && !confirm('确认执行该模型操作？')) return;
     const result = await api(path, { method: 'POST', body: JSON.stringify(body || {}) });
     clearAlert();
     // Stop jobs do not own a runtime log; opening their log dialog automatically
@@ -1030,12 +1044,12 @@ async function openLaunchDialog(model, mode = 'start') {
     launchMode = mode;
     launchManifest = detail.manifest || {};
     $('launch-title').textContent = {
-      start: 'Start model',
-      restart: 'Restart model',
-      switch: 'Switch to model',
-    }[mode] || 'Model options';
+      start: '启动模型',
+      restart: '重启模型',
+      switch: '切换到模型',
+    }[mode] || '模型选项';
     $('launch-model-name').textContent = `${model.name} · ${model.id}`;
-    $('launch-submit').textContent = mode === 'switch' ? 'Switch' : mode === 'restart' ? 'Restart' : 'Start';
+    $('launch-submit').textContent = mode === 'switch' ? '切换' : mode === 'restart' ? '重启' : '启动';
     $('launch-force').parentElement.classList.toggle('hidden', mode !== 'start');
     $('launch-submit').classList.toggle(
       'hidden',
@@ -1076,7 +1090,7 @@ async function submitLaunchDialog() {
   if (launchMode !== 'start') payload.stop_timeout_seconds = 20;
 
   if (payload.force && !confirm(
-    'Force start beyond the configured model-count limit?\n\nConfirm OS and CMM memory are sufficient. Multiple runtimes will use separate ports.'
+    '超过配置的模型数量上限强制启动？\n\n请确认 OS/CMM 内存充足。多个运行时使用独立端口。'
   )) return;
 
   const endpoint = {
@@ -1091,7 +1105,7 @@ async function submitLaunchDialog() {
 async function saveLaunchProfile() {
   if (!launchModel) return;
   const profileName = $('profile').value || 'default';
-  if (!confirm(`Save current options to profile ${profileName} for ${launchModel.id}?`)) return;
+  if (!confirm(`保存当前选项到 Profile ${profileName}（${launchModel.id}）？`)) return;
   const payload = { ...currentLaunchPayload(), reasoning: 'off' };
   try {
     await api(`/api/v1/models/${launchModel.id}/profiles/${profileName}`, {
@@ -1108,7 +1122,7 @@ async function saveLaunchProfile() {
 async function duplicateLaunchProfile() {
   if (!launchModel) return;
   const target = $('new-profile-name').value.trim();
-  if (!target) return showAlert('Enter a new profile name first.');
+  if (!target) return showAlert('请先输入新的 Profile 名称。');
   await control(
     `/api/v1/models/${launchModel.id}/profiles/${$('profile').value}/duplicate`,
     { target },
@@ -1123,7 +1137,7 @@ async function duplicateLaunchProfile() {
 async function resetLaunchProfile() {
   if (!launchModel) return;
   const profile = $('profile').value;
-  if (!confirm(`Reset profile ${profile} to its original manifest values?`)) return;
+  if (!confirm(`将 Profile ${profile} 重置为 manifest 原始值？`)) return;
   await control(`/api/v1/models/${launchModel.id}/profiles/${profile}/reset`, {});
   await openLaunchDialog({ ...launchModel }, launchMode);
 }
@@ -1131,8 +1145,8 @@ async function resetLaunchProfile() {
 async function deleteLaunchProfile() {
   if (!launchModel) return;
   const profile = $('profile').value;
-  if (profile === 'default') return showAlert('The default profile cannot be deleted.');
-  if (!confirm(`Delete profile ${profile}?`)) return;
+  if (profile === 'default') return showAlert('默认 Profile 不能删除。');
+  if (!confirm(`删除 Profile ${profile}？`)) return;
   await api(`/api/v1/models/${launchModel.id}/profiles/${profile}`, { method: 'DELETE' });
   launchModel = {
     ...launchModel,
@@ -1144,7 +1158,7 @@ async function deleteLaunchProfile() {
 async function diffLaunchProfile() {
   if (!launchModel) return;
   const target = $('new-profile-name').value.trim();
-  if (!target) return showAlert('Enter the new profile name to compare.');
+  if (!target) return showAlert('请输入要对比的新 Profile 名称。');
   const left = $('profile').value;
   try {
     const result = await api(
@@ -1154,7 +1168,7 @@ async function diffLaunchProfile() {
     output.classList.remove('hidden');
     output.textContent = result.changes?.length
       ? result.changes.map(change => `${change.change.padEnd(7)} ${change.field}: ${JSON.stringify(change.left)} → ${JSON.stringify(change.right)}`).join('\n')
-      : 'No differences.';
+      : '没有差异。';
   } catch (error) {
     showAlert(error.message);
   }
@@ -1186,7 +1200,7 @@ async function previewLaunchCommand() {
 
 async function openLog(jobId) {
   currentLogJob = jobId;
-  $('log-title').textContent = `Job ${jobId}`;
+  $('log-title').textContent = `任务 ${jobId}`;
   $('log-dialog').showModal();
   await loadLog({ force: true, follow: true });
   startLogPolling();
@@ -1210,12 +1224,12 @@ async function loadLog({ force = false, follow = null } = {}) {
     if (!result.path) {
       const line = document.createElement('span');
       line.className = 'log-line warning';
-      line.textContent = 'This job has no runtime log. Open the associated start job to inspect llama-server output.';
+      line.textContent = '该任务没有运行时日志。请打开关联的启动任务查看 llama-server 输出。';
       content.append(line);
     } else if (!result.lines.length) {
       const line = document.createElement('span');
       line.className = 'log-line';
-      line.textContent = '(empty log)';
+      line.textContent = '（空日志）';
       content.append(line);
     } else {
       for (const text of result.lines) {
@@ -1313,7 +1327,7 @@ $('model-dialog-close').onclick = () => $('model-dialog').close();
 $('launch-force').onchange = event => {
   if (event.target.checked) {
     event.target.checked = confirm(
-      'Start beyond the configured model-count limit? Confirm OS/CMM memory is sufficient.'
+      '超过配置的模型数量上限启动？请确认 OS/CMM 内存充足。'
     );
   }
 };
@@ -1338,5 +1352,5 @@ if (tokenInput.value.trim()) {
   refresh();
   scheduleRefresh();
 } else {
-  showAlert('请输入 Bearer token 后点击连接');
+  showAlert('请输入访问令牌后点击连接');
 }

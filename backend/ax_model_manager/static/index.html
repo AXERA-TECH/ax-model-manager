@@ -28,7 +28,7 @@
   </nav>
   <div class="top-right">
     <span id="top-status" class="status-pill">未连接</span>
-    <input id="token" class="token-input" type="password" placeholder="Bearer token" autocomplete="off">
+    <input id="token" class="token-input" type="password" placeholder="访问令牌" autocomplete="off">
     <button id="connect" class="btn small primary">连接</button>
     <button id="refresh" class="icon-btn" title="刷新数据">↻</button>
     <button id="theme-toggle" class="icon-btn" title="切换主题">☀️</button>
@@ -87,9 +87,9 @@
     </section>
 
     <section class="panel" id="active-api-panel">
-      <div class="panel-head"><h2>OpenAI 兼容 API</h2><span id="api-state" class="pill">No model running</span></div>
+      <div class="panel-head"><h2>OpenAI 兼容 API</h2><span id="api-state" class="pill">没有运行中的模型</span></div>
       <div id="active-api" class="api-grid">
-        <p class="message">启动模型后显示 API base、模型 ID 和请求示例。</p>
+        <p class="message">启动模型后显示 API 地址、模型 ID 和请求示例。</p>
       </div>
     </section>
 
@@ -98,7 +98,7 @@
       <div id="device-identity" class="metadata device-summary"></div>
       <div id="runtime-reconciliation" class="runtime-reconciliation"></div>
       <div id="device-grid" class="device-grid">
-        <p class="message">tempmon is unavailable on this board.</p>
+        <p class="message">该板卡上的 tempmon 不可用。</p>
       </div>
     </details>
   </section>
@@ -108,11 +108,11 @@
       <input id="model-search" class="search" type="search" placeholder="搜索模型 / 能力">
       <select id="capability-filter" class="select" aria-label="能力筛选">
         <option value="">全部能力</option>
-        <option value="text">text</option>
-        <option value="image">image</option>
-        <option value="image_gen">image_gen</option>
-        <option value="audio">audio</option>
-        <option value="tts">tts</option>
+        <option value="text">文本</option>
+        <option value="image">图片</option>
+        <option value="image_gen">生图</option>
+        <option value="audio">音频</option>
+        <option value="tts">语音合成</option>
       </select>
       <label class="checkbox"><input id="show-invalid" type="checkbox"> 显示无效</label>
       <div class="toolbar-right">
@@ -138,13 +138,13 @@
           <p class="panel-subtitle">浏览器内直接试用当前运行模型</p>
         </div>
         <div class="demo-actions">
-          <span id="lite-webui-state" class="pill">No model running</span>
+          <span id="lite-webui-state" class="pill">没有运行中的模型</span>
           <a id="lite-webui-open" class="button-link" href="#" target="_blank" rel="noopener">打开</a>
           <button id="lite-webui-reload" type="button" class="btn small">刷新</button>
         </div>
       </div>
       <p class="message demo-message">LiteWebUI 是独立静态前端，部署在 <code>http://&lt;board-ip&gt;:18100/</code>；Manager 只负责链接和嵌入。</p>
-      <iframe id="lite-webui-frame" class="demo-frame" title="LiteWebUI model demo"></iframe>
+      <iframe id="lite-webui-frame" class="demo-frame" title="LiteWebUI 模型演示"></iframe>
     </section>
 
     <section class="panel">
@@ -217,28 +217,28 @@
   <dialog id="settings-dialog" class="settings-dialog">
     <div class="dialog-head">
       <div>
-        <h3>Model Manager Settings</h3>
-        <div class="job-detail">Local model discovery and storage path</div>
+        <h3>模型管理设置</h3>
+        <div class="job-detail">本地模型发现与存储路径</div>
       </div>
-      <button id="settings-close">Close</button>
+      <button id="settings-close">关闭</button>
     </div>
     <div class="settings-body">
       <label class="settings-field">
-        Model root directory
+        模型根目录
         <input id="model-root-input" type="text" autocomplete="off" spellcheck="false">
       </label>
       <p class="message">
-        Each first-level directory under this path is treated as one model package.
-        Save &amp; Scan persists the path and immediately rescans it.
+        该路径下的每个一级目录视为一个模型包。
+        保存并扫描会持久化路径并立即重新扫描。
       </p>
       <p class="message">
-        Changing this path does not move existing models. Stop running models before
-        changing it, otherwise running models may no longer be visible under the new root.
+        修改路径不会移动已有模型。修改前请先停止运行中的模型，
+        否则它们可能在新路径下不可见。
       </p>
       <div id="settings-result" class="settings-result hidden"></div>
       <div class="dialog-controls settings-actions">
-        <button id="validate-model-root">Validate</button>
-        <button id="save-model-root" class="primary">Save &amp; Scan</button>
+        <button id="validate-model-root">校验</button>
+        <button id="save-model-root" class="primary">保存并扫描</button>
       </div>
     </div>
   </dialog>
@@ -246,21 +246,21 @@
   <dialog id="launch-dialog">
     <div class="dialog-head">
       <div>
-        <h3 id="launch-title">Start model</h3>
+        <h3 id="launch-title">启动模型</h3>
         <div id="launch-model-name" class="job-detail"></div>
       </div>
       <div class="dialog-controls">
-        <button id="launch-save-profile">Save profile</button>
-        <button id="launch-submit" class="primary">Start</button>
-        <button id="launch-cancel">Close</button>
+        <button id="launch-save-profile">保存 Profile</button>
+        <button id="launch-submit" class="primary">启动</button>
+        <button id="launch-cancel">关闭</button>
       </div>
     </div>
     <div class="launch-body">
       <div class="form-grid">
-        <label>Profile<select id="profile"></select></label>
-            <label>New profile name<input id="new-profile-name" type="text" placeholder="benchmark_greedy" autocomplete="off"></label>
-        <label>Port<input id="port" type="number" min="18080" max="18089" placeholder="auto"></label>
-        <label data-llama-only>Context
+        <label>配置 Profile<select id="profile"></select></label>
+            <label>新 Profile 名称<input id="new-profile-name" type="text" placeholder="benchmark_greedy" autocomplete="off"></label>
+        <label>端口<input id="port" type="number" min="18080" max="18089" placeholder="自动"></label>
+        <label data-llama-only>上下文
           <select id="context" aria-label="Context length">
             <option value="4096">4K</option>
             <option value="8192">8K</option>
@@ -271,45 +271,45 @@
             <option value="262144">256K</option>
           </select>
         </label>
-        <label data-llama-only>Batch<input id="batch" type="number" min="1" step="256" value="4096"></label>
-        <label data-llama-only>UBatch<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
-        <label data-llama-only>Cache RAM MiB<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
+        <label data-llama-only>批大小<input id="batch" type="number" min="1" step="256" value="4096"></label>
+        <label data-llama-only>微批大小<input id="ubatch" type="number" min="1" step="256" value="4096"></label>
+        <label data-llama-only>Cache RAM (MiB)<input id="cache-ram" type="number" min="0" step="256" value="0"></label>
         <label data-llama-only>Ctxcp<input id="ctxcp" type="number" min="0" max="128" value="0"></label>
         <label class="checkbox" data-llama-only><input id="mtp" type="checkbox"> MTP</label>
-        <label class="checkbox" data-llama-only><input id="metrics" type="checkbox"> Enable /metrics</label>
+        <label class="checkbox" data-llama-only><input id="metrics" type="checkbox"> 启用 /metrics</label>
       </div>
       <p id="launch-task-message" class="message hidden">
-        This package is a one-shot TTS task. It needs text and an output file at request time,
-        so it is not started as a long-running OpenAI-compatible service.
+        该模型包是一次性 TTS 任务，需要在请求时提供文本和输出文件，
+        因此不会作为长驻 OpenAI 兼容服务启动。
       </p>
       <p id="launch-imagegen-message" class="message hidden">
-        Image generation service (axdiffusion-server). Only the profile and port are used;
-        LLM context, KV cache and sampling options do not apply.
+        图像生成服务（axdiffusion-server）。只使用 Profile 和端口；
+        LLM 上下文、KV 缓存和采样参数不适用。
       </p>
 
-      <div class="section-head" data-llama-only><h2>Sampling</h2></div>
+      <div class="section-head" data-llama-only><h2>采样</h2></div>
       <div class="form-grid" data-llama-only>
-        <label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.01" value="0"></label>
+        <label>温度<input id="temperature" type="number" min="0" max="2" step="0.01" value="0"></label>
         <label>Top K<input id="top-k" type="number" min="0" step="1" value="0"></label>
         <label>Top P<input id="top-p" type="number" min="0" max="1" step="0.01" value="1"></label>
         <label>Min P<input id="min-p" type="number" min="0" max="1" step="0.01" value="0"></label>
-        <label>Repeat last N<input id="repeat-last-n" type="number" min="0" step="1" value="0"></label>
-        <label>Repeat penalty<input id="repeat-penalty" type="number" min="0" step="0.01" value="1"></label>
-        <label>Presence penalty<input id="presence-penalty" type="number" min="-2" max="2" step="0.01" value="0"></label>
-        <label>Frequency penalty<input id="frequency-penalty" type="number" min="-2" max="2" step="0.01" value="0"></label>
+        <label>重复最近 N<input id="repeat-last-n" type="number" min="0" step="1" value="0"></label>
+        <label>重复惩罚<input id="repeat-penalty" type="number" min="0" step="0.01" value="1"></label>
+        <label>存在惩罚<input id="presence-penalty" type="number" min="-2" max="2" step="0.01" value="0"></label>
+        <label>频率惩罚<input id="frequency-penalty" type="number" min="-2" max="2" step="0.01" value="0"></label>
       </div>
 
       <label class="checkbox warning-check">
         <input id="launch-force" type="checkbox">
-        Start even if the configured model-count limit is reached
+        即使达到配置的模型数量上限也启动
       </label>
-      <p class="message">Multiple runtimes use separate ports. Confirm OS/CMM memory is sufficient before forcing the limit.</p>
+      <p class="message">多个运行时使用独立端口。强制超过上限前，请确认 OS/CMM 内存充足。</p>
       <div class="profile-tools">
-        <button id="launch-duplicate-profile" type="button">Duplicate</button>
-        <button id="launch-reset-profile" type="button">Reset</button>
-        <button id="launch-delete-profile" type="button" class="danger">Delete</button>
-        <button id="launch-diff-profile" type="button">Diff vs new</button>
-        <button id="launch-preview" type="button">Preview command</button>
+        <button id="launch-duplicate-profile" type="button">复制</button>
+        <button id="launch-reset-profile" type="button">重置</button>
+        <button id="launch-delete-profile" type="button" class="danger">删除</button>
+        <button id="launch-diff-profile" type="button">与新 Profile 对比</button>
+        <button id="launch-preview" type="button">预览命令</button>
       </div>
       <pre id="profile-diff" class="side-output hidden"></pre>
       <pre id="launch-preview-output" class="side-output hidden"></pre>
@@ -319,22 +319,22 @@
   <dialog id="model-dialog">
     <div class="dialog-head">
       <div>
-        <h3 id="model-dialog-title">Model</h3>
+        <h3 id="model-dialog-title">模型</h3>
         <div id="model-dialog-subtitle" class="job-detail"></div>
       </div>
-      <button id="model-dialog-close">Close</button>
+      <button id="model-dialog-close">关闭</button>
     </div>
     <div class="model-detail-body">
       <section>
-        <h2>Overview</h2>
+        <h2>概览</h2>
         <div id="model-detail-summary" class="metadata"></div>
       </section>
       <section>
-        <h2>Artifacts</h2>
+        <h2>文件</h2>
         <div id="model-detail-artifacts" class="detail-list"></div>
       </section>
       <section>
-        <h2>Recent jobs</h2>
+        <h2>最近任务</h2>
         <div id="model-detail-jobs" class="detail-list"></div>
       </section>
       <section>
@@ -346,24 +346,24 @@
 
   <dialog id="log-dialog">
     <div class="dialog-head">
-      <h3 id="log-title">Job log</h3>
+      <h3 id="log-title">任务日志</h3>
       <div class="dialog-controls">
-        <input id="log-filter" type="search" placeholder="Filter logs">
+        <input id="log-filter" type="search" placeholder="筛选日志">
         <label class="checkbox">
           <input id="log-errors-only" type="checkbox">
-          Errors
+          仅错误
         </label>
         <label class="checkbox">
           <input id="auto-log" type="checkbox" checked>
-          Auto refresh
+          自动刷新
         </label>
         <label class="checkbox">
           <input id="follow-log" type="checkbox" checked>
-          Follow tail
+          跟随尾部
         </label>
-        <button id="reload-log">Reload</button>
-        <a id="log-download" class="button-link" href="#">Download</a>
-        <button id="close-log">Close</button>
+        <button id="reload-log">重新加载</button>
+        <a id="log-download" class="button-link" href="#">下载</a>
+        <button id="close-log">关闭</button>
       </div>
     </div>
     <div id="log-content" role="log"></div>
