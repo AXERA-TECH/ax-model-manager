@@ -15,6 +15,7 @@ def resource_payload(**overrides: Any) -> dict[str, Any]:
         "load": {"1": 0.5, "5": 0.4, "15": 0.3},
         "cpu": {"cores": 16, "frequency_mhz": [1600]},
         "cmm": {"total_kb": 1000, "used_kb": 200},
+        "ddr": {"used_bw_gbps": 1.5},
         "os_memory": {"total_kb": 1000, "avail_kb": 500, "used_kb": 500},
         "npu": {"clock_mhz": [800]},
         "npu_max_temp_c": 40.0,
@@ -32,6 +33,7 @@ def test_resources_api_reports_cpu_percent_and_maxima(
 ) -> None:
     samples = [resource_payload(), resource_payload(
         cmm={"total_kb": 1000, "used_kb": 300},
+        ddr={"used_bw_gbps": 2.5},
         os_memory={"total_kb": 1000, "avail_kb": 300, "used_kb": 700},
         net={"rx_mbps": 3.0, "tx_mbps": 4.0},
         npu_max_temp_c=45.0,
@@ -53,6 +55,7 @@ def test_resources_api_reports_cpu_percent_and_maxima(
             "cpu_load_1m": 0.5,
             "os_used_kb": 500.0,
             "cmm_used_kb": 200.0,
+            "ddr_bw_gbps": 1.5,
             "rx_mbps": 1.0,
             "tx_mbps": 2.0,
             "npu_temp_c": 40.0,
@@ -63,6 +66,7 @@ def test_resources_api_reports_cpu_percent_and_maxima(
         second = client.get("/api/v1/resources").json()
         assert second["current"]["cmm"]["used_kb"] == 300
         assert second["max"]["cmm_used_kb"] == 300.0
+        assert second["max"]["ddr_bw_gbps"] == 2.5
         assert second["max"]["os_used_kb"] == 700.0
         assert second["max"]["rx_mbps"] == 3.0
         assert second["max"]["tx_mbps"] == 4.0

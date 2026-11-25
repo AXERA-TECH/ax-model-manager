@@ -428,6 +428,7 @@ function renderDeviceResources(resources = {}) {
     setRing('npu-util', 0, '—', 'NPU 使用率');
     setRing('os', 0, '—', 'OS 内存');
     setRing('cmm', 0, '—', 'CMM 内存');
+    setRing('ddr', 0, '—', 'DDR 带宽');
     setRing('npu', 0, '—', 'SoC 温度');
     identity.append(summaryPill('设备指标不可用'));
     const message = document.createElement('p');
@@ -455,10 +456,13 @@ function renderDeviceResources(resources = {}) {
   const osTotal = Number(memory.total_kb || 0);
   const cpuPercent = Number(cpu.percent);
   const npuUtil = Number(npu.util_avg);
+  const ddr = resources.ddr || {};
+  const ddrBw = Number(ddr.used_bw_gbps);
   setRing('cpu', Number.isFinite(cpuPercent) ? cpuPercent : 0, Number.isFinite(cpuPercent) ? `${cpuPercent.toFixed(0)}%` : '—', 'CPU 使用率');
   setRing('npu-util', Number.isFinite(npuUtil) ? npuUtil : 0, Number.isFinite(npuUtil) ? `${npuUtil.toFixed(0)}%` : '—', 'NPU 使用率');
   setRing('os', osTotal ? usedMemory / osTotal * 100 : 0, osTotal ? (usedMemory / 1024 / 1024).toFixed(1) : '—', osTotal ? `OS / ${(osTotal / 1024 / 1024).toFixed(0)} GiB` : 'OS 内存');
   setRing('cmm', cmmTotal ? cmmUsed / cmmTotal * 100 : 0, cmmTotal ? (cmmUsed / 1024 / 1024).toFixed(1) : '—', cmmTotal ? `CMM / ${(cmmTotal / 1024 / 1024).toFixed(0)} GiB` : 'CMM 内存');
+  setRing('ddr', Number.isFinite(ddrBw) ? ddrBw / 20 * 100 : 0, Number.isFinite(ddrBw) ? ddrBw.toFixed(2) : '—', 'DDR GB/s');
   setRing('npu', Number.isFinite(maxTemp) ? maxTemp / 85 * 100 : 0, Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°` : '—', 'SoC 温度');
   $('device-name').textContent = 'AX8860P 开发板';
   $('device-sub').textContent = `${location.hostname} · ${agent.bsp_version || 'BSP —'} · agent ${agent.version || '—'}`;
@@ -481,6 +485,10 @@ function renderDeviceResources(resources = {}) {
     summaryPill(
       cmm.total_kb ? `CMM ${formatKb(cmm.used_kb)} / ${formatKb(cmm.total_kb)}` : 'CMM —',
       cmm.total_kb ? `可用 ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
+    ),
+    summaryPill(
+      Number.isFinite(ddrBw) ? `DDR ${formatNumber(ddrBw, 2)} GB/s` : 'DDR —',
+      'All DDR USED BW',
     ),
     summaryPill(
       Number.isFinite(maxTemp) ? `SoC ${formatNumber(maxTemp)}°C` : 'SoC —',
@@ -515,6 +523,11 @@ function renderDeviceResources(resources = {}) {
         agent.bsp_version || '',
         resources.sampled_at ? `采样 ${new Date(resources.sampled_at * 1000).toLocaleTimeString()}` : '',
       ],
+    ),
+    deviceCard(
+      'DDR 带宽',
+      Number.isFinite(ddrBw) ? `${formatNumber(ddrBw, 2)} GB/s` : '—',
+      ['All DDR USED BW'],
     ),
     deviceCard(
       'CPU',

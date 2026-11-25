@@ -64,7 +64,7 @@ tempmon :8080（独立项目）
 | 单窗口多图输入 | OpenAI-compatible `image_url` content parts，前提是模型能力支持 |
 | ASR 音频输入 | 支持 `input_audio` content part 的模型可用 |
 | VoxCPM2 TTS | 长驻 VoxCPM2 service 启动后调用 `/v1/audio/speech` |
-| OS 内存 / CMM / 网络带宽 / SoC 温度 / CPU 与 NPU 利用率 | `GET /api/v1/resources` |
+| OS 内存 / CMM / DDR 带宽 / 网络带宽 / SoC 温度 / CPU 与 NPU 利用率 | `GET /api/v1/resources` |
 | CPU percent | `GET /api/v1/resources`，基于 `/proc/stat` delta |
 | 资源最大值与清除 | `GET /api/v1/resources` + `POST /api/v1/resources/max/reset` |
 | 输入 / 输出 token 数 | llama-server final response `usage` |

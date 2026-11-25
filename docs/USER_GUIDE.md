@@ -103,7 +103,7 @@ Chat / Vision / OCR / ASR / TTS clients
 
 - `GET /api/v1/resources` 提供当前板卡资源快照。
 - CPU percent 通过 `/proc/stat` 两次采样差值计算。
-- 提供 CPU load、CPU/NPU 利用率、OS used、CMM used、RX/TX、SoC 温度、llama RSS 的进程内最大值。
+- 提供 CPU load、CPU/NPU 利用率、OS used、CMM used、DDR 带宽、RX/TX、SoC 温度、llama RSS 的进程内最大值。
 - `POST /api/v1/resources/max/reset` 只清除 max，不改变当前值。
 - Dashboard 继续返回 `resources` 当前快照，并额外包含 `resource_monitor`。
 
@@ -111,7 +111,7 @@ Chat / Vision / OCR / ASR / TTS clients
 
 内置 Web UI 采用「概览 / 模型 / 验证 / 任务 / 设置」五个标签：
 
-- 概览：设备状态、CPU / NPU 使用率、CMM / OS 内存、SoC 温度环形指标、快速验证入口、OpenAI 兼容 API。
+- 概览：设备状态、CPU / NPU 使用率、CMM / OS 内存、DDR 带宽、SoC 温度环形指标、快速验证入口、OpenAI 兼容 API。
 - OpenAI 兼容 API：多个运行时用标签切换，一次显示一个模型的 Base URL / 模型 ID / 请求示例；生图模型显示 Images API 和网页入口。
 - 模型：模型卡片、搜索、能力筛选、状态筛选（全部 / 已启动 / 已停止 / 可启动 / 异常）、详情、manifest / artifacts 校验、启动参数。
 - 启动参数的「预览命令」以 shell 脚本格式输出：`cd`、`export`、反斜杠续行，并提供「复制命令」。
@@ -596,7 +596,7 @@ predicted_per_token_ms
 curl -H "Authorization: Bearer $TOKEN" "$MANAGER/api/v1/resources"
 ```
 
-返回当前 OS/CMM、CPU percent、NPU 利用率、load、SoC 温度、磁盘、网络、llama 进程，以及
+返回当前 OS/CMM、CPU percent、NPU 利用率、DDR 带宽、load、SoC 温度、磁盘、网络、llama 进程，以及
 Manager 进程内维护的资源最大值：
 
 ```json

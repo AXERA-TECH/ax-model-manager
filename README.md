@@ -122,7 +122,7 @@ http://<board-ip>:18090/
 - 停止前 `/slots` busy guard
 - job、日志、审计、runtime 恢复
 - Web Admin UI + 可选 Lite WebUI 聊天演示
-- OS / CMM / CPU / 网络 / NPU / llama RSS 资源监控
+- OS / CMM / CPU / 网络 / NPU / DDR 带宽 / llama RSS 资源监控
 - 模型根目录可在 Web UI 的 Settings 中修改
 
 ---
