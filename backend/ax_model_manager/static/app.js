@@ -337,9 +337,11 @@ function renderDeviceResources(resources = {}) {
     status.textContent = '设备离线';
     $('device-name').textContent = 'AX8860P 开发板';
     $('device-sub').textContent = `${location.hostname} · 设备信息不可用`;
-    setRing('cmm', 0, '—', 'CMM');
-    setRing('os', 0, '—', 'OS');
-    setRing('npu', 0, '—', 'NPU');
+    setRing('cpu', 0, '—', 'CPU 使用率');
+    setRing('npu-util', 0, '—', 'NPU 使用率');
+    setRing('os', 0, '—', 'OS 内存');
+    setRing('cmm', 0, '—', 'CMM 内存');
+    setRing('npu', 0, '—', 'SoC 温度');
     identity.append(summaryPill('设备指标不可用'));
     const message = document.createElement('p');
     message.className = 'message';
@@ -364,9 +366,13 @@ function renderDeviceResources(resources = {}) {
   const cmmUsed = Number(cmm.used_kb || 0);
   const cmmTotal = Number(cmm.total_kb || 0);
   const osTotal = Number(memory.total_kb || 0);
-  setRing('cmm', cmmTotal ? cmmUsed / cmmTotal * 100 : 0, cmmTotal ? (cmmUsed / 1024 / 1024).toFixed(1) : '—', cmmTotal ? `CMM / ${(cmmTotal / 1024 / 1024).toFixed(0)} GiB` : 'CMM');
-  setRing('os', osTotal ? usedMemory / osTotal * 100 : 0, osTotal ? (usedMemory / 1024 / 1024).toFixed(1) : '—', osTotal ? `OS / ${(osTotal / 1024 / 1024).toFixed(0)} GiB` : 'OS');
-  setRing('npu', Number.isFinite(maxTemp) ? maxTemp / 85 * 100 : 0, Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°` : '—', 'NPU 温度');
+  const cpuPercent = Number(cpu.percent);
+  const npuUtil = Number(npu.util_avg);
+  setRing('cpu', Number.isFinite(cpuPercent) ? cpuPercent : 0, Number.isFinite(cpuPercent) ? `${cpuPercent.toFixed(0)}%` : '—', 'CPU 使用率');
+  setRing('npu-util', Number.isFinite(npuUtil) ? npuUtil : 0, Number.isFinite(npuUtil) ? `${npuUtil.toFixed(0)}%` : '—', 'NPU 使用率');
+  setRing('os', osTotal ? usedMemory / osTotal * 100 : 0, osTotal ? (usedMemory / 1024 / 1024).toFixed(1) : '—', osTotal ? `OS / ${(osTotal / 1024 / 1024).toFixed(0)} GiB` : 'OS 内存');
+  setRing('cmm', cmmTotal ? cmmUsed / cmmTotal * 100 : 0, cmmTotal ? (cmmUsed / 1024 / 1024).toFixed(1) : '—', cmmTotal ? `CMM / ${(cmmTotal / 1024 / 1024).toFixed(0)} GiB` : 'CMM 内存');
+  setRing('npu', Number.isFinite(maxTemp) ? maxTemp / 85 * 100 : 0, Number.isFinite(maxTemp) ? `${maxTemp.toFixed(0)}°` : '—', 'SoC 温度');
   $('device-name').textContent = 'AX8860P 开发板';
   $('device-sub').textContent = `${location.hostname} · ${agent.bsp_version || 'BSP —'} · agent ${agent.version || '—'}`;
 
@@ -374,22 +380,26 @@ function renderDeviceResources(resources = {}) {
   // identity, per-zone temperatures, clocks, and filesystem usage stay folded.
   identity.append(
     summaryPill(
-      cmm.total_kb ? `CMM ${formatKb(cmm.used_kb)} / ${formatKb(cmm.total_kb)}` : 'CMM —',
-      cmm.total_kb ? `可用 ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
+      `CPU ${formatNumber(cpu.percent)}% / 负载 ${formatNumber(load['1'])}`,
+      `5 分钟负载 ${formatNumber(load['5'])} · 15 分钟负载 ${formatNumber(load['15'])}`,
+    ),
+    summaryPill(
+      Number.isFinite(npuUtil) ? `NPU 使用率 ${formatNumber(npuUtil)}%` : 'NPU 使用率 —',
+      npu.tdp_freq_mhz ? `TDP ${npu.tdp_freq_mhz} MHz` : '',
     ),
     summaryPill(
       memory.total_kb ? `OS ${formatKb(usedMemory)} / ${formatKb(memory.total_kb)}` : 'OS —',
       memory.avail_kb ? `可用 ${formatKb(memory.avail_kb)}` : '',
     ),
     summaryPill(
-      Number.isFinite(maxTemp) ? `NPU ${formatNumber(maxTemp)}°C` : 'NPU —',
+      cmm.total_kb ? `CMM ${formatKb(cmm.used_kb)} / ${formatKb(cmm.total_kb)}` : 'CMM —',
+      cmm.total_kb ? `可用 ${formatKb(Number(cmm.total_kb) - Number(cmm.used_kb || 0))}` : '',
+    ),
+    summaryPill(
+      Number.isFinite(maxTemp) ? `SoC ${formatNumber(maxTemp)}°C` : 'SoC —',
       (resources.thermal_zones || [])
         .map(zone => `${zone.type || zone.name}: ${formatNumber(zone.c)}°C`)
         .join('\n'),
-    ),
-    summaryPill(
-      `CPU ${formatNumber(cpu.percent)}% / 负载 ${formatNumber(load['1'])}`,
-      `5 分钟负载 ${formatNumber(load['5'])} · 15 分钟负载 ${formatNumber(load['15'])}`,
     ),
     summaryPill(
       net.rx_mbps == null && net.tx_mbps == null ? 'NET —' : `NET ↓${formatNumber(net.rx_mbps)}/↑${formatNumber(net.tx_mbps)}`,
@@ -430,7 +440,7 @@ function renderDeviceResources(resources = {}) {
       ],
     ),
     deviceCard(
-      'NPU 温度区域',
+      'SoC 温度区域',
       Number.isFinite(maxTemp) ? `${formatNumber(maxTemp)} °C` : '—',
       [Number.isFinite(maxTemp) ? (maxTemp >= 70 ? 'high' : maxTemp >= 55 ? 'warm' : 'normal') : ''],
       (resources.thermal_zones || []).map(zone => [
@@ -442,7 +452,7 @@ function renderDeviceResources(resources = {}) {
     deviceCard(
       'NPU 时钟',
       npu.tdp_freq_mhz ? `${npu.tdp_freq_mhz} MHz TDP` : '—',
-      [],
+      [Number.isFinite(npuUtil) ? `使用率 ${formatNumber(npuUtil)}%` : ''],
       (npu.clock_mhz || []).map(value => [`${formatNumber(value, 0)} MHz`]),
     ),
   );

@@ -193,7 +193,7 @@ code, pre, .mono {
 .hero p { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .hero-status { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .device-summary { margin-top: 12px; }
-.rings { display: flex; gap: 14px; margin-left: auto; flex: none; }
+.rings { display: flex; flex-wrap: wrap; gap: 14px; margin-left: auto; flex: none; justify-content: flex-end; }
 .ring { width: 112px; height: 112px; position: relative; }
 .ring svg { display: block; width: 112px; height: 112px; transform: rotate(-90deg); }
 .ring .track { fill: none; stroke: var(--surface-3); stroke-width: 8; }

@@ -118,7 +118,7 @@ http://<board-ip>:18090/
 - 启动参数 Profile：保存、复制、重置、Diff、预览
 - start / stop / restart / switch
 - 多模型端口池：18080–18089
-- 启动前 CMM / OS / NPU 温度检查
+- 启动前 CMM / OS / SoC 温度检查
 - 停止前 `/slots` busy guard
 - job、日志、审计、runtime 恢复
 - Web Admin UI + 可选 Lite WebUI 聊天演示

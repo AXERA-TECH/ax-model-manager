@@ -94,7 +94,7 @@ Chat / Vision / OCR / ASR / TTS clients
 - start / stop / restart / switch。
 - 多个不同模型并行运行，自动从 18080-18089 分配端口。
 - `max_running_models` 达到上限时可由用户确认 `force: true`。
-- 启动前检查 CMM、OS memory 和 NPU 温度阈值。
+- 启动前检查 CMM、OS memory 和 SoC 温度阈值。
 - 停止前通过 `/slots` 做 IN USE guard。
 - Manager 重启后可 reconcile runtime，支持孤儿 runtime adopt / stop。
 - job 状态持久化，服务重启后仍能查看历史。
@@ -103,7 +103,7 @@ Chat / Vision / OCR / ASR / TTS clients
 
 - `GET /api/v1/resources` 提供当前板卡资源快照。
 - CPU percent 通过 `/proc/stat` 两次采样差值计算。
-- 提供 CPU load、OS used、CMM used、RX/TX、NPU 温度、llama RSS 的进程内最大值。
+- 提供 CPU load、CPU/NPU 利用率、OS used、CMM used、RX/TX、SoC 温度、llama RSS 的进程内最大值。
 - `POST /api/v1/resources/max/reset` 只清除 max，不改变当前值。
 - Dashboard 继续返回 `resources` 当前快照，并额外包含 `resource_monitor`。
 
@@ -419,7 +419,7 @@ http://<board-ip>:18090/docs
 | `max_running_models` | 最大并行模型数 |
 | `min_free_cmm_mb` | 启动前最小 CMM 余量 |
 | `min_os_available_mb` | 启动前最小 OS 可用内存 |
-| `max_npu_temp_c` | 启动前 NPU 温度阈值 |
+| `max_npu_temp_c` | 启动前 SoC 温度阈值（字段名保留 npu 以兼容 API） |
 | `auth_token` | Manager API Bearer token |
 | `allowed_origins` | 浏览器跨源访问白名单 |
 
@@ -594,7 +594,7 @@ predicted_per_token_ms
 curl -H "Authorization: Bearer $TOKEN" "$MANAGER/api/v1/resources"
 ```
 
-返回当前 OS/CMM、CPU percent、load、NPU 温度、磁盘、网络、llama 进程，以及
+返回当前 OS/CMM、CPU percent、NPU 利用率、load、SoC 温度、磁盘、网络、llama 进程，以及
 Manager 进程内维护的资源最大值：
 
 ```json
