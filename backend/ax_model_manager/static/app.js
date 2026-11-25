@@ -1272,18 +1272,18 @@ async function loadLog({ force = false, follow = null } = {}) {
     const result = await api(`/api/v1/jobs/${currentLogJob}/logs?${parameters.toString()}`);
     content.replaceChildren();
     if (!result.path) {
-      const line = document.createElement('span');
+      const line = document.createElement('div');
       line.className = 'log-line warning';
       line.textContent = '该任务没有运行时日志。请打开关联的启动任务查看 llama-server 输出。';
       content.append(line);
     } else if (!result.lines.length) {
-      const line = document.createElement('span');
+      const line = document.createElement('div');
       line.className = 'log-line';
       line.textContent = '（空日志）';
       content.append(line);
     } else {
       for (const text of result.lines) {
-        const line = document.createElement('span');
+        const line = document.createElement('div');
         line.className = `log-line${/error|failed|failure|exception|traceback|oom|out of memory/i.test(text) ? ' error' : /warn/i.test(text) ? ' warning' : ''}`;
         line.textContent = text;
         content.append(line);
