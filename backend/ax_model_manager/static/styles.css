@@ -435,6 +435,49 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); backdrop-filter: blur(5px); }
 .settings-result.ok { background: var(--green-soft); color: var(--green); border-color: rgba(52, 199, 89, .2); }
 .settings-result.error { background: var(--red-soft); color: var(--red); border-color: rgba(255, 59, 48, .2); }
 .settings-actions { margin-top: 14px; }
+
+/* Dialog buttons share the app button system. Many legacy dialog buttons only
+   carry a state class (.primary/.danger), so style them by container. */
+.dialog-head > button,
+.dialog-controls > button,
+.settings-actions > button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.dialog-head > button:hover,
+.dialog-controls > button:hover,
+.settings-actions > button:hover { background: var(--surface-2); }
+.dialog-head > button.primary,
+.dialog-controls > button.primary,
+.settings-actions > button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(10, 132, 255, .22);
+}
+.dialog-head > button.primary:hover,
+.dialog-controls > button.primary:hover,
+.settings-actions > button.primary:hover { background: #0071e3; }
+.dialog-head > button.danger,
+.dialog-controls > button.danger,
+.settings-actions > button.danger {
+  color: var(--red);
+  border-color: rgba(255, 59, 48, .25);
+  background: var(--red-soft);
+}
 .launch-body { padding: 18px 22px 22px; overflow: auto; max-height: calc(100vh - 120px); }
 .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--muted); font-weight: 600; }
