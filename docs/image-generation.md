@@ -21,7 +21,7 @@ Manager 对 `capabilities` 包含 `image_gen` 的模型：
 模型目录（示例）：
 
 ```text
-/mnt/tangqi/MiniMax-H3-Image-AX8860/
+<model-root>/MiniMax-H3-Image-AX8860/
 ├── axdiffusion.json          # 模型架构描述
 ├── bin/
 │   ├── axdiffusion-cli
