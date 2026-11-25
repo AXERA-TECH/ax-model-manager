@@ -14,6 +14,7 @@ let launchManifest = null;
 let currentDemoUrl = '';
 let currentConfig = {};
 let selectedApiModel = null;
+let confirmResolve = null;
 const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 tokenInput.value = localStorage.getItem('axmm.token') || '';
@@ -39,6 +40,31 @@ function showAlert(message) {
 
 function clearAlert() {
   $('alert').classList.add('hidden');
+}
+
+function confirmDialog(message, { title = '确认操作', okText = '确定', cancelText = '取消', danger = false } = {}) {
+  return new Promise(resolve => {
+    const dialog = $('confirm-dialog');
+    $('confirm-title').textContent = title;
+    $('confirm-message').textContent = message;
+    const icon = $('confirm-icon');
+    icon.className = `confirm-icon${danger ? ' danger' : ''}`;
+    icon.textContent = danger ? '!' : '?';
+    const ok = $('confirm-ok');
+    ok.textContent = okText;
+    ok.className = `btn ${danger ? 'danger' : 'primary'}`;
+    $('confirm-cancel').textContent = cancelText;
+    confirmResolve = resolve;
+    dialog.showModal();
+  });
+}
+
+function closeConfirm(value) {
+  const dialog = $('confirm-dialog');
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  if (dialog.open) dialog.close();
+  if (resolve) resolve(value);
 }
 
 async function api(path, options = {}) {
@@ -927,9 +953,10 @@ async function openModelDialog(model) {
 async function saveModelLimit() {
   const value = Number($('max-running-models').value);
   if (!Number.isFinite(value) || value < 1) return;
-  if (value > 1 && !confirm(
-    `允许最多 ${value} 个模型运行时并发？\n\n请确认 OS 和 CMM 内存充足。每个运行时使用独立端口。`
-  )) return;
+  if (value > 1 && !(await confirmDialog(
+    `允许最多 ${value} 个模型运行时并发？\n\n请确认 OS 和 CMM 内存充足。每个运行时使用独立端口。`,
+    { title: '调整并发上限' },
+  ))) return;
   try {
     await api('/api/v1/config', {
       method: 'PUT',
@@ -1052,7 +1079,22 @@ async function saveModelRoot() {
 
 async function control(path, body) {
   try {
-    if (body && !confirm('确认执行该模型操作？')) return;
+    if (body) {
+      let action = '执行';
+      if (path.endsWith('/start')) action = '启动';
+      else if (path.endsWith('/stop')) action = '停止';
+      else if (path.endsWith('/restart')) action = '重启';
+      else if (path.endsWith('/switch-to')) action = '切换到';
+      else if (path.endsWith('/manifest/confirm')) action = '确认';
+      else if (path.endsWith('/adopt')) action = '接管';
+      const modelMatch = path.match(/\/models\/([^/]+)/);
+      const modelId = modelMatch ? decodeURIComponent(modelMatch[1]) : '';
+      const ok = await confirmDialog(
+        modelId ? `确认${action}模型 ${modelId}？` : `确认${action}该模型？`,
+        { title: `${action}模型`, okText: action, danger: action === '停止' },
+      );
+      if (!ok) return;
+    }
     const result = await api(path, { method: 'POST', body: JSON.stringify(body || {}) });
     clearAlert();
     // Stop jobs do not own a runtime log; opening their log dialog automatically
@@ -1192,9 +1234,10 @@ async function submitLaunchDialog() {
   if (launchMode === 'start') payload.force = $('launch-force').checked;
   if (launchMode !== 'start') payload.stop_timeout_seconds = 20;
 
-  if (payload.force && !confirm(
-    '超过配置的模型数量上限强制启动？\n\n请确认 OS/CMM 内存充足。多个运行时使用独立端口。'
-  )) return;
+  if (payload.force && !(await confirmDialog(
+    '超过配置的模型数量上限强制启动？\n\n请确认 OS/CMM 内存充足。多个运行时使用独立端口。',
+    { title: '强制启动' },
+  ))) return;
 
   const endpoint = {
     start: `/api/v1/models/${launchModel.id}/start`,
@@ -1208,7 +1251,7 @@ async function submitLaunchDialog() {
 async function saveLaunchProfile() {
   if (!launchModel) return;
   const profileName = $('profile').value || 'default';
-  if (!confirm(`保存当前选项到 Profile ${profileName}（${launchModel.id}）？`)) return;
+  if (!(await confirmDialog(`保存当前选项到 Profile ${profileName}（${launchModel.id}）？`, { title: '保存 Profile' }))) return;
   const payload = { ...currentLaunchPayload(), reasoning: 'off' };
   try {
     await api(`/api/v1/models/${launchModel.id}/profiles/${profileName}`, {
@@ -1240,7 +1283,7 @@ async function duplicateLaunchProfile() {
 async function resetLaunchProfile() {
   if (!launchModel) return;
   const profile = $('profile').value;
-  if (!confirm(`将 Profile ${profile} 重置为 manifest 原始值？`)) return;
+  if (!(await confirmDialog(`将 Profile ${profile} 重置为 manifest 原始值？`, { title: '重置 Profile' }))) return;
   await control(`/api/v1/models/${launchModel.id}/profiles/${profile}/reset`, {});
   await openLaunchDialog({ ...launchModel }, launchMode);
 }
@@ -1249,7 +1292,7 @@ async function deleteLaunchProfile() {
   if (!launchModel) return;
   const profile = $('profile').value;
   if (profile === 'default') return showAlert('默认 Profile 不能删除。');
-  if (!confirm(`删除 Profile ${profile}？`)) return;
+  if (!(await confirmDialog(`删除 Profile ${profile}？`, { title: '删除 Profile', danger: true }))) return;
   await api(`/api/v1/models/${launchModel.id}/profiles/${profile}`, { method: 'DELETE' });
   launchModel = {
     ...launchModel,
@@ -1428,10 +1471,23 @@ $('launch-diff-profile').onclick = diffLaunchProfile;
 $('launch-preview').onclick = previewLaunchCommand;
 $('launch-cancel').onclick = () => $('launch-dialog').close();
 $('model-dialog-close').onclick = () => $('model-dialog').close();
-$('launch-force').onchange = event => {
+$('confirm-ok').onclick = () => closeConfirm(true);
+$('confirm-cancel').onclick = () => closeConfirm(false);
+$('confirm-dialog').addEventListener('cancel', event => {
+  event.preventDefault();
+  closeConfirm(false);
+});
+$('confirm-dialog').addEventListener('close', () => {
+  if (confirmResolve) {
+    confirmResolve(false);
+    confirmResolve = null;
+  }
+});
+$('launch-force').onchange = async event => {
   if (event.target.checked) {
-    event.target.checked = confirm(
-      '超过配置的模型数量上限启动？请确认 OS/CMM 内存充足。'
+    event.target.checked = await confirmDialog(
+      '超过配置的模型数量上限启动？请确认 OS/CMM 内存充足。',
+      { title: '强制启动' },
     );
   }
 };
