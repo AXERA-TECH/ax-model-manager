@@ -890,13 +890,27 @@ async function openSettings() {
   $('settings-dialog').showModal();
 }
 
+function translateModelError(text) {
+  return String(text)
+    .replace(/^model_root does not exist: /, '目录不存在：')
+    .replace(/^model_root is not a directory: /, '不是目录：')
+    .replace(/^model_root is not readable: /, '目录不可读：')
+    .replace(/^model_root must be an absolute path$/, '必须使用绝对路径')
+    .replace(/^model_root cannot be \/$/, '不能使用根目录 /')
+    .replace(/^model_root cannot overlap the manager data directory$/, '不能与 Manager 数据目录重叠')
+    .replace(/^model_root is empty$/, '模型根目录不能为空')
+    .replace(/^invalid model_root$/, '模型根目录无效')
+    .replace(/^stop running models before changing model_root$/, '修改模型根目录前请先停止运行中的模型')
+    .replace(/^cannot set limit below active runtime count$/, '并发上限不能低于当前运行中的模型数');
+}
+
 function renderSettingsResult(result) {
   const output = $('settings-result');
   const errors = Array.isArray(result?.errors) ? result.errors : [];
   const errorText = errors
     .map(item => typeof item === 'string'
-      ? item
-      : `${item.id || 'model'}: ${(item.errors || []).join(', ')}`)
+      ? translateModelError(item)
+      : `${item.id || 'model'}: ${(item.errors || []).map(translateModelError).join(', ')}`)
     .join('\n');
   const failed = result?.valid === false;
   output.className = `settings-result ${failed ? 'error' : 'ok'}`;
@@ -912,7 +926,7 @@ function renderSettingsResult(result) {
     `发现模型：${count}`,
     `有效：${valid}`,
     `可启动：${ready}`,
-  ].join('\n') + (errorText ? `\n\nModel issues:\n${errorText}` : '');
+  ].join('\n') + (errorText ? `\n\n模型问题：\n${errorText}` : '');
 }
 
 async function validateModelRoot() {
@@ -925,14 +939,40 @@ async function validateModelRoot() {
     });
     renderSettingsResult(result);
   } catch (error) {
-    showAlert(error.message);
+    renderSettingsError(error);
   }
+}
+
+function renderSettingsError(error) {
+  const output = $('settings-result');
+  output.className = 'settings-result error';
+  let message = error?.message || String(error);
+  try {
+    const detail = JSON.parse(message);
+    if (detail?.message) {
+      message = translateModelError(detail.message);
+      if (Array.isArray(detail.errors) && detail.errors.length) {
+        message += '\n' + detail.errors.map(translateModelError).join('\n');
+      }
+    }
+  } catch (_) {}
+  output.textContent = message;
 }
 
 async function saveModelRoot() {
   const value = $('model-root-input').value.trim();
   if (!value) return;
   try {
+    // Validate first so a typo or a non-existent path is reported inside the
+    // dialog instead of only in the alert behind the modal overlay.
+    const check = await api('/api/v1/config/validate', {
+      method: 'POST',
+      body: JSON.stringify({ model_root: value }),
+    });
+    if (check?.valid === false) {
+      renderSettingsResult(check);
+      return;
+    }
     await api('/api/v1/config', {
       method: 'PUT',
       body: JSON.stringify({ model_root: value }),
@@ -943,7 +983,7 @@ async function saveModelRoot() {
     clearAlert();
     await refresh();
   } catch (error) {
-    showAlert(error.message);
+    renderSettingsError(error);
   }
 }
 
