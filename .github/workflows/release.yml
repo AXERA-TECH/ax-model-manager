@@ -91,13 +91,24 @@ jobs:
       - name: Checksum
         run: |
           set -euo pipefail
+          version="$(cat VERSION)"
           cd dist
-          sha256sum ax-model-manager-*.tar.gz > ax-model-manager-*.tar.gz.sha256
+          sha256sum "ax-model-manager-${version}.tar.gz" \
+            > "ax-model-manager-${version}.tar.gz.sha256"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/ax-model-manager-*.tar.gz
-            dist/ax-model-manager-*.tar.gz.sha256
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="$(cat VERSION)"
+          asset="dist/ax-model-manager-${version}.tar.gz"
+          checksum="dist/ax-model-manager-${version}.tar.gz.sha256"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+          gh release create "$tag" "$asset" "$checksum" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "AXERA Model Manager ${version}" \
+            --generate-notes
