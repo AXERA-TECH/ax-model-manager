@@ -650,6 +650,21 @@ def infer_manifest(model_dir: Path) -> dict[str, Any]:
         capabilities = ["audio"]
         max_context = 4096
         default_profile = {"context": 4096}
+    elif "hy-mt2" in folder_name or "hy-mt2" in package_text:
+        # Follow the model README's run.sh -s defaults: 16K context,
+        # prompt cache in host RAM, and CTXCP=8. The generic LLM fallback
+        # uses 32K/0/0, which does not match the package recommendation.
+        capabilities = ["text"]
+        max_context = 16384
+        default_profile = {
+            "context": 16384,
+            "batch": 4096,
+            "ubatch": 4096,
+            "cache_ram": 4096,
+            "ctxcp": 8,
+            "mtp": False,
+            "reasoning": "off",
+        }
     elif binary.name == "llama-tts":
         capabilities = ["tts"]
         max_context = 4096
