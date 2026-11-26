@@ -329,6 +329,17 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
   --token "<your-token>"
 ```
 
+可信网络内可以关闭 Bearer token：
+
+```bash
+./scripts/install.sh \
+  --model-root "<模型文件夹>" \
+  --data-dir /var/lib/axera-model-manager \
+  --no-token
+```
+
+`--no-token` 会写入空的 `auth_token`，API 和 Web UI 无需登录即可访问。仅建议在隔离或可信网络中使用。
+
 安装位置：
 
 ```text

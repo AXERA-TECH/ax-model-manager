@@ -95,6 +95,17 @@ https://github.com/AXERA-TECH/tempmon
   --data-dir /var/lib/axera-model-manager
 ```
 
+默认会生成随机 Bearer token。可信网络内如果不想配置 token，可以加 `--no-token`：
+
+```bash
+./scripts/install.sh \
+  --model-root "<model-root>" \
+  --data-dir /var/lib/axera-model-manager \
+  --no-token
+```
+
+> `--no-token` 会写入空的 `auth_token`，API 和 Web UI 无需登录即可访问。仅建议在隔离或可信网络中使用。
+
 验证：
 
 ```bash

@@ -1,5 +1,19 @@
 # Releases
 
+## 0.4.0 — 2026-11-26
+
+Chinese tabbed Web UI and DDR/resource monitoring release.
+
+- Chinese Web Admin UI with Overview / Models / Verify / Jobs / Settings tabs
+- CPU / NPU utilization, OS / CMM memory, DDR bandwidth and SoC temperature rings
+- Model status filter (all / started / stopped / ready / invalid)
+- Runtime tabs for multiple running models; Images API and web UI link for image_gen
+- Terminal-style job log, copyable shell command preview, styled confirm dialogs
+- Stopping state with duplicate-start guard
+- 10-second model scan cache with forced rescan from Refresh
+- `--no-token` installer option for trusted networks
+- axdiffusion image-generation runtime support
+
 ## 0.3.1 — 2026-11-19
 
 Web Admin UI demo integration.

@@ -11,6 +11,7 @@ DATA_DIR="${DATA_DIR_DEFAULT}"
 MODEL_ROOT=/mnt/models
 MANAGER_PORT=18090
 TOKEN=""
+NO_TOKEN=0
 BACKUP_ROOT=""
 PREVIOUS_VERSION=""
 NO_SERVICE=0
@@ -26,6 +27,7 @@ Options:
   --model-root PATH    model root
   --port NUMBER        manager port
   --token TOKEN        bearer token; generated when absent
+  --no-token           disable bearer token auth (trusted networks only)
   --backup-root PATH   upgrade metadata only
   --previous-version V upgrade metadata only
   --no-service         install files but do not start service
@@ -41,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --model-root) MODEL_ROOT="${2:?missing value}"; shift 2 ;;
     --port) MANAGER_PORT="${2:?missing value}"; shift 2 ;;
     --token) TOKEN="${2:?missing value}"; shift 2 ;;
+    --no-token) NO_TOKEN=1; shift ;;
     --backup-root) BACKUP_ROOT="${2:?missing value}"; shift 2 ;;
     --previous-version) PREVIOUS_VERSION="${2:?missing value}"; shift 2 ;;
     --no-service) NO_SERVICE=1; shift ;;
@@ -69,7 +72,9 @@ chmod 700 "${DATA_DIR}"
 if [[ -f "${CONFIG_PATH}" ]]; then
   log "preserving existing config: ${CONFIG_PATH}"
 else
-  if [[ -z "${TOKEN}" ]]; then
+  if [[ ${NO_TOKEN} -eq 1 ]]; then
+    TOKEN=""
+  elif [[ -z "${TOKEN}" ]]; then
     TOKEN="$(python3 - <<'PY'
 import secrets
 print(secrets.token_urlsafe(32))

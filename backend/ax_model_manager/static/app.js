@@ -1600,9 +1600,28 @@ applyTheme(localStorage.getItem('axmm.theme') || 'light');
 const initialTab = location.hash.slice(1);
 if (initialTab && document.getElementById(`tab-${initialTab}`)) switchTab(initialTab);
 
-if (tokenInput.value.trim()) {
-  refresh();
-  scheduleRefresh();
-} else {
-  showAlert('请输入访问令牌后点击连接');
+async function bootstrap() {
+  if (tokenInput.value.trim()) {
+    refresh();
+    scheduleRefresh();
+    return;
+  }
+  try {
+    const config = await api('/api/v1/config');
+    if (config?.authentication === false) {
+      tokenInput.classList.add('hidden');
+      $('connect').classList.add('hidden');
+      refresh();
+      scheduleRefresh();
+      return;
+    }
+    showAlert('请输入访问令牌后点击连接');
+  } catch (error) {
+    if (/访问令牌|未登录|401/.test(error.message)) {
+      showAlert('请输入访问令牌后点击连接');
+    } else {
+      showAlert(error.message);
+    }
+  }
 }
+bootstrap();
