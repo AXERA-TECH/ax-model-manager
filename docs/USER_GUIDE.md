@@ -296,12 +296,12 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 
 ### 前置条件
 
-1. AX8860 / AX8860P 板卡可运行 Python 3.10+。
-2. 使用 systemd。
+1. AX8860 / AX8860P 板卡可运行 Python 3.10–3.13。
+2. 使用 systemd，并安装 curl。
 3. 模型包已放在配置的模型根目录，例如 `<模型文件夹>`。
-4. tempmon agent 已在板端 `8080` 端口运行。tempmon **不包含在本仓库中**，请从
-   [AXERA-TECH/tempmon](https://github.com/AXERA-TECH/tempmon) 获取并按其 README 安装。
-   systemd 控制模式下，启动前资源检查依赖它。
+4. tempmon agent 建议在板端 `8080` 端口运行。Release 包内置 tempmon 2.3.0，
+   安装时如果未检测到已有 tempmon 会自动安装；也可以从
+   [AXERA-TECH/tempmon](https://github.com/AXERA-TECH/tempmon) 单独获取。
 5. llama-server 可执行文件、GGUF、mmproj、kernels 等由模型包自带。
 
 ### 安装
@@ -339,6 +339,12 @@ AX_MODEL_MANAGER_PORT=18092 ./scripts/dev_server.sh
 ```
 
 `--no-token` 会写入空的 `auth_token`，API 和 Web UI 无需登录即可访问。仅建议在隔离或可信网络中使用。
+
+Release 包内置 aarch64 离线 wheelhouse（CPython 3.10–3.13）和 tempmon 2.3.0，
+安装时不需要外网；源码安装则需要 PyPI。不想安装内置 tempmon 时可以加 `--no-tempmon`。
+
+`--data-dir` 默认 `/var/lib/axera-model-manager`，存放 job 日志、审计记录和用户
+manifest 覆盖文件；模型文件不放在这里。
 
 安装位置：
 

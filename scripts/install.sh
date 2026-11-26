@@ -12,6 +12,7 @@ MODEL_ROOT=/mnt/models
 MANAGER_PORT=18090
 TOKEN=""
 NO_TOKEN=0
+TEMPMON_INSTALL=1
 BACKUP_ROOT=""
 PREVIOUS_VERSION=""
 NO_SERVICE=0
@@ -28,6 +29,7 @@ Options:
   --port NUMBER        manager port
   --token TOKEN        bearer token; generated when absent
   --no-token           disable bearer token auth (trusted networks only)
+  --no-tempmon         do not install the bundled tempmon agent
   --backup-root PATH   upgrade metadata only
   --previous-version V upgrade metadata only
   --no-service         install files but do not start service
@@ -44,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --port) MANAGER_PORT="${2:?missing value}"; shift 2 ;;
     --token) TOKEN="${2:?missing value}"; shift 2 ;;
     --no-token) NO_TOKEN=1; shift ;;
+    --no-tempmon) TEMPMON_INSTALL=0; shift ;;
     --backup-root) BACKUP_ROOT="${2:?missing value}"; shift 2 ;;
     --previous-version) PREVIOUS_VERSION="${2:?missing value}"; shift 2 ;;
     --no-service) NO_SERVICE=1; shift ;;
@@ -112,6 +115,45 @@ PY
   log "created config: ${CONFIG_PATH}"
 fi
 
+install_bundled_tempmon() {
+  [[ ${TEMPMON_INSTALL} -eq 1 ]] || return 0
+  local existing=""
+  if command -v tempmon >/dev/null 2>&1; then
+    existing="$(command -v tempmon)"
+  elif [[ -x /root/tempmon ]]; then
+    existing="/root/tempmon"
+  elif [[ -x /usr/local/bin/tempmon ]]; then
+    existing="/usr/local/bin/tempmon"
+  fi
+  if [[ -n "${existing}" ]]; then
+    log "tempmon already installed at ${existing}; skipping bundled agent"
+    return 0
+  fi
+  local bundled="${PREFIX}/third_party/tempmon/tempmon"
+  if [[ ! -x "${bundled}" ]]; then
+    warn "bundled tempmon not found; install tempmon separately for resource checks"
+    return 0
+  fi
+  install -m 0755 "${bundled}" /usr/local/bin/tempmon
+  cat > /etc/systemd/system/tempmon.service <<'UNIT'
+[Unit]
+Description=tempmon board agent
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/tempmon 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable tempmon.service >/dev/null
+  systemctl restart tempmon.service
+  log "installed bundled tempmon at /usr/local/bin/tempmon"
+}
+
 STAGING="${PREFIX}.new"
 OLD_PREFIX="${PREFIX}.old"
 HAD_OLD_PREFIX=0
@@ -139,6 +181,9 @@ rm -rf "${STAGING}"
 mkdir -p "${STAGING}"
 cp -a "${SOURCE_DIR}/backend" "${STAGING}/backend"
 cp -a "${SOURCE_DIR}/scripts" "${STAGING}/scripts"
+if [[ -d "${SOURCE_DIR}/third_party" ]]; then
+  cp -a "${SOURCE_DIR}/third_party" "${STAGING}/third_party"
+fi
 cp -a "${SOURCE_DIR}/README.md" "${SOURCE_DIR}/RELEASES.md" "${SOURCE_DIR}/VERSION" "${STAGING}/"
 
 PYTHONPATH="${STAGING}/backend${PYTHONPATH:+:${PYTHONPATH}}" \
@@ -264,9 +309,16 @@ mv "${STAGING}" "${PREFIX}"
 PREFIX_REPLACED=1
 
 python3 -m venv "${PREFIX}/venv"
-"${PREFIX}/venv/bin/pip" install --disable-pip-version-check --upgrade pip
-"${PREFIX}/venv/bin/pip" install --disable-pip-version-check -r "${PREFIX}/backend/requirements.txt"
-"${PREFIX}/venv/bin/pip" install --disable-pip-version-check -e "${PREFIX}/backend"
+if compgen -G "${PREFIX}/third_party/wheelhouse/*.whl" >/dev/null; then
+  log "installing Python dependencies from bundled wheelhouse"
+  "${PREFIX}/venv/bin/pip" install --disable-pip-version-check --no-index \
+    --find-links "${PREFIX}/third_party/wheelhouse" \
+    -r "${PREFIX}/backend/requirements.txt"
+else
+  log "installing Python dependencies from PyPI"
+  "${PREFIX}/venv/bin/pip" install --disable-pip-version-check --upgrade pip
+  "${PREFIX}/venv/bin/pip" install --disable-pip-version-check -r "${PREFIX}/backend/requirements.txt"
+fi
 
 install -m 0644 "${PREFIX}/axera-model-manager.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 install -m 0644 "${PREFIX}/axera-model-manager-rotate.service" \
@@ -288,6 +340,7 @@ systemctl restart "${SERVICE_NAME}.service"
 systemctl restart "${ROTATE_TIMER_NAME}"
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:${MANAGER_PORT}/health" >/dev/null 2>&1; then
+    install_bundled_tempmon || warn "bundled tempmon installation failed"
     log "installed ${VERSION} at ${PREFIX}; service is healthy"
     exit 0
   fi

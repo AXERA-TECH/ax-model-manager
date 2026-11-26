@@ -15,3 +15,5 @@ dist/
 htmlcov/
 fixtures/models/generated/
 *.log
+
+third_party/

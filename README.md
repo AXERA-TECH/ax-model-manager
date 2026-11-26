@@ -75,17 +75,15 @@ http://127.0.0.1:18090/
 
 ```text
 AX8860 / AX8860P
-Python 3.10+
-systemd
-tempmon agent 已在 8080 运行
+Python 3.10–3.13
+systemd + curl
 模型包已放到模型根目录
 ```
 
-tempmon 是独立项目，不包含在本仓库中：
-
-```text
-https://github.com/AXERA-TECH/tempmon
-```
+Release 包内置 **aarch64 离线 wheelhouse**（fastapi / uvicorn 等，CPython 3.10–3.13）
+和 **tempmon 2.3.0** 二进制：安装不需要外网；如果板上还没有 tempmon，会自动安装。
+源码仓库不包含这些二进制，从源码安装时需要 PyPI，并可从
+<https://github.com/AXERA-TECH/tempmon> 单独获取 tempmon。
 
 安装：
 
@@ -105,6 +103,11 @@ https://github.com/AXERA-TECH/tempmon
 ```
 
 > `--no-token` 会写入空的 `auth_token`，API 和 Web UI 无需登录即可访问。仅建议在隔离或可信网络中使用。
+
+如果不想安装内置 tempmon，可以加 `--no-tempmon`。
+
+`--data-dir` 默认是 `/var/lib/axera-model-manager`，存放 job 日志、审计记录和用户
+manifest 覆盖文件；模型文件不放在这里。
 
 验证：
 
@@ -171,7 +174,25 @@ http://<board-ip>:18090/
 - 资源 max 保存在 Manager 进程内，重启后重建。
 - llama-server 当前固定 `-np 1`，多请求在同一服务内排队。
 - 多模型并行不等价于同一个模型的多 batch 并行推理。
-- 不包含 tempmon agent，需单独安装。
+- 源码仓库不包含 tempmon agent；Release 包内置 tempmon 2.3.0，安装时自动部署。
+
+---
+
+## 发布
+
+推送 `v*` tag（例如 `v0.4.0`）会触发 `.github/workflows/release.yml`：
+
+- 构建 aarch64 离线 wheelhouse（CPython 3.10–3.13）
+- 下载并打包 tempmon 2.3.0
+- 运行 `./scripts/package.sh`
+- 上传 `ax-model-manager-<version>.tar.gz` 和 `.sha256`
+- 创建 GitHub Release
+
+本地打包：
+
+```bash
+./scripts/package.sh
+```
 
 ---
 

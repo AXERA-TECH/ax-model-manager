@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build offline wheelhouse
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/wheelhouse
+          for py in 3.10 3.11 3.12 3.13; do
+            python -m pip download \
+              --dest third_party/wheelhouse \
+              --platform manylinux2014_aarch64 \
+              --python-version "$py" \
+              --only-binary=:all: \
+              -r backend/requirements.txt
+          done
+
+      - name: Extract third-party licenses
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          whl_dir = Path("third_party/wheelhouse")
+          out = Path("third_party/licenses")
+          for whl in sorted(whl_dir.glob("*.whl")):
+              with zipfile.ZipFile(whl) as archive:
+                  names = archive.namelist()
+                  dist = next((n.split("/")[0] for n in names if n.endswith(".dist-info/METADATA")), None)
+                  if not dist:
+                      continue
+                  package = dist.removesuffix(".dist-info")
+                  for name in names:
+                      if f"{dist}/licenses/" in name or name in (
+                          f"{dist}/LICENSE",
+                          f"{dist}/LICENSE.md",
+                          f"{dist}/LICENSE.txt",
+                      ):
+                          target = out / package / Path(name).name
+                          target.parent.mkdir(parents=True, exist_ok=True)
+                          target.write_bytes(archive.read(name))
+          (out / "README.txt").write_text(
+              "Offline Python wheelhouse for AXERA Model Manager.\n"
+              "fastapi: MIT; uvicorn: BSD-3-Clause; pydantic/pydantic-core: MIT; "
+              "starlette: BSD-3-Clause. See per-package license files.\n"
+              "Target: manylinux2014_aarch64, CPython 3.10-3.13.\n",
+              encoding="utf-8",
+          )
+          PY
+          cat > third_party/wheelhouse/README.txt <<'EOF'
+          Offline Python wheelhouse for AXERA Model Manager.
+          Target: CPython 3.10-3.13, manylinux2014_aarch64.
+          install.sh uses --no-index --find-links when this directory is present.
+          EOF
+
+      - name: Bundle tempmon
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/tempmon
+          curl -fsSL --retry 3 \
+            -o /tmp/tempmon.tar.gz \
+            https://github.com/AXERA-TECH/tempmon/releases/download/v2.3.0/tempmon-2.3.0-linux-aarch64.tar.gz
+          tar -xzf /tmp/tempmon.tar.gz -C third_party/tempmon
+          chmod 755 third_party/tempmon/tempmon
+
+      - name: Package
+        run: ./scripts/package.sh
+
+      - name: Checksum
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ax-model-manager-*.tar.gz > ax-model-manager-*.tar.gz.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/ax-model-manager-*.tar.gz
+            dist/ax-model-manager-*.tar.gz.sha256
+          generate_release_notes: true

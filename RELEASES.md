@@ -12,6 +12,9 @@ Chinese tabbed Web UI and DDR/resource monitoring release.
 - Stopping state with duplicate-start guard
 - 10-second model scan cache with forced rescan from Refresh
 - `--no-token` installer option for trusted networks
+- `--no-tempmon` option and bundled tempmon 2.3.0 (auto-installed when absent)
+- Offline aarch64 wheelhouse for CPython 3.10–3.13; no PyPI access needed
+- Automatic GitHub Release workflow on `v*` tags
 - axdiffusion image-generation runtime support
 
 ## 0.3.1 — 2026-11-19
